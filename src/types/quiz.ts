@@ -48,6 +48,7 @@ export interface GameMeta {
   endsAt?: number;
   serverTime?: number;
   showLeaderboardAfterQuestion?: boolean;
+  showQuestionOnPlayers?: boolean;
   randomizeQuestions?: boolean;
   randomizeAnswers?: boolean;
 }

@@ -8,7 +8,6 @@ import {
   subscribeQuestionResult,
   subscribePlayers,
   submitPlayerAnswer,
-  loginAnonymously,
 } from '../../lib/firebase';
 import {
   GameMeta,
@@ -167,12 +166,15 @@ export const PlayerGamePage: React.FC = () => {
       ? questions[gameMeta.currentIndex]
       : null;
 
+  // Host toggle setting: default ON
+  const showQuestionOnPlayer = gameMeta?.showQuestionOnPlayers !== false;
+
   // Shapes & Colors for Accessible Kahoot styling
   const optionThemes = [
     {
       bg: 'bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white',
       shape: (
-        <svg className="w-8 h-8 fill-white shrink-0" viewBox="0 0 24 24">
+        <svg className="w-6 h-6 sm:w-8 sm:h-8 fill-white shrink-0" viewBox="0 0 24 24">
           <polygon points="12,3 22,21 2,21" />
         </svg>
       ),
@@ -181,7 +183,7 @@ export const PlayerGamePage: React.FC = () => {
     {
       bg: 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white',
       shape: (
-        <svg className="w-8 h-8 fill-white shrink-0" viewBox="0 0 24 24">
+        <svg className="w-6 h-6 sm:w-8 sm:h-8 fill-white shrink-0" viewBox="0 0 24 24">
           <polygon points="12,2 22,12 12,22 2,12" />
         </svg>
       ),
@@ -190,7 +192,7 @@ export const PlayerGamePage: React.FC = () => {
     {
       bg: 'bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white',
       shape: (
-        <svg className="w-8 h-8 fill-white shrink-0" viewBox="0 0 24 24">
+        <svg className="w-6 h-6 sm:w-8 sm:h-8 fill-white shrink-0" viewBox="0 0 24 24">
           <circle cx="12" cy="12" r="10" />
         </svg>
       ),
@@ -199,7 +201,7 @@ export const PlayerGamePage: React.FC = () => {
     {
       bg: 'bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white',
       shape: (
-        <svg className="w-8 h-8 fill-white shrink-0" viewBox="0 0 24 24">
+        <svg className="w-6 h-6 sm:w-8 sm:h-8 fill-white shrink-0" viewBox="0 0 24 24">
           <rect x="3" y="3" width="18" height="18" rx="2" />
         </svg>
       ),
@@ -273,7 +275,7 @@ export const PlayerGamePage: React.FC = () => {
     );
   }
 
-  // 3. QUESTION STATE (BIG TOUCH ANSWER BUTTONS)
+  // 3. QUESTION STATE (SHOWS QUESTION TEXT + IMAGE + ADAPTIVE ANSWER BUTTONS)
   if (gameMeta.status === 'question' && currentQuestion) {
     if (hasAnswered) {
       return (
@@ -296,9 +298,9 @@ export const PlayerGamePage: React.FC = () => {
     const isTrueFalse = currentQuestion.type === 'truefalse';
 
     return (
-      <div className="min-h-[100dvh] flex flex-col justify-between p-3 sm:p-4 bg-slate-950 safe-area-inset">
+      <div className="min-h-[100dvh] h-[100dvh] max-h-[100dvh] flex flex-col justify-between p-2 sm:p-4 bg-slate-950 safe-area-inset overflow-hidden">
         {/* Top Mini Bar */}
-        <div className="flex items-center justify-between text-white text-xs font-bold px-2 py-1">
+        <div className="flex items-center justify-between text-white text-xs font-bold px-2 py-1 shrink-0">
           <span className="text-slate-400">
             Q {currentQuestion.questionNumber} / {currentQuestion.totalQuestions}
           </span>
@@ -307,9 +309,25 @@ export const PlayerGamePage: React.FC = () => {
           </span>
         </div>
 
-        {/* 2x2 Grid or 2-Button Grid */}
+        {/* Top Question Card (Respects showQuestionOnPlayers setting) */}
+        {showQuestionOnPlayer && (
+          <div className="shrink-0 max-h-[30dvh] sm:max-h-[35dvh] overflow-y-auto px-3 py-2.5 my-1 rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 flex flex-col items-center justify-center text-center shadow-lg">
+            {currentQuestion.imageUrl && (
+              <img
+                src={currentQuestion.imageUrl}
+                alt="Question media"
+                className="max-h-20 sm:max-h-24 rounded-xl object-contain mb-1.5 shadow-md border border-white/10"
+              />
+            )}
+            <h2 className="text-white font-extrabold text-[clamp(1rem,4vw,1.35rem)] leading-snug break-words max-w-full">
+              {currentQuestion.text}
+            </h2>
+          </div>
+        )}
+
+        {/* Answer Buttons Grid (Fits remaining screen space, no overflow) */}
         <div
-          className={`grid gap-3 sm:gap-4 flex-1 my-2 ${
+          className={`grid gap-2 sm:gap-3 flex-1 my-1 min-h-0 ${
             isTrueFalse ? 'grid-rows-2 grid-cols-1' : 'grid-cols-2 grid-rows-2'
           }`}
         >
@@ -318,14 +336,14 @@ export const PlayerGamePage: React.FC = () => {
               {/* True Button */}
               <button
                 onClick={() => handleAnswerClick(0)}
-                className="w-full h-full rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-98 transition-all p-4 flex flex-col items-center justify-center text-white shadow-lg border-2 border-blue-400/40"
+                className="w-full h-full rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-98 transition-all p-3 sm:p-4 flex items-center justify-center gap-3 text-white shadow-lg border-2 border-blue-400/40 select-none min-h-[48px]"
               >
-                <div className="p-3 bg-white/20 rounded-full mb-2">
-                  <svg className="w-10 h-10 fill-white" viewBox="0 0 24 24">
+                <div className="p-2 sm:p-3 bg-white/20 rounded-xl shrink-0">
+                  <svg className="w-7 h-7 sm:w-9 sm:h-9 fill-white" viewBox="0 0 24 24">
                     <polygon points="12,2 22,12 12,22 2,12" />
                   </svg>
                 </div>
-                <span className="text-2xl sm:text-3xl font-black uppercase tracking-wider">
+                <span className="text-[clamp(1.125rem,4.5vw,1.6rem)] font-black uppercase tracking-wider break-words">
                   {t('trueOption')}
                 </span>
               </button>
@@ -333,14 +351,14 @@ export const PlayerGamePage: React.FC = () => {
               {/* False Button */}
               <button
                 onClick={() => handleAnswerClick(1)}
-                className="w-full h-full rounded-2xl bg-rose-600 hover:bg-rose-700 active:scale-98 transition-all p-4 flex flex-col items-center justify-center text-white shadow-lg border-2 border-rose-400/40"
+                className="w-full h-full rounded-2xl bg-rose-600 hover:bg-rose-700 active:scale-98 transition-all p-3 sm:p-4 flex items-center justify-center gap-3 text-white shadow-lg border-2 border-rose-400/40 select-none min-h-[48px]"
               >
-                <div className="p-3 bg-white/20 rounded-full mb-2">
-                  <svg className="w-10 h-10 fill-white" viewBox="0 0 24 24">
+                <div className="p-2 sm:p-3 bg-white/20 rounded-xl shrink-0">
+                  <svg className="w-7 h-7 sm:w-9 sm:h-9 fill-white" viewBox="0 0 24 24">
                     <polygon points="12,3 22,21 2,21" />
                   </svg>
                 </div>
-                <span className="text-2xl sm:text-3xl font-black uppercase tracking-wider">
+                <span className="text-[clamp(1.125rem,4.5vw,1.6rem)] font-black uppercase tracking-wider break-words">
                   {t('falseOption')}
                 </span>
               </button>
@@ -352,15 +370,25 @@ export const PlayerGamePage: React.FC = () => {
                 <button
                   key={idx}
                   onClick={() => handleAnswerClick(idx)}
-                  className={`w-full h-full rounded-2xl ${theme.bg} active:scale-95 transition-all p-3 sm:p-4 flex flex-col items-center justify-center shadow-lg border-2 border-white/20 select-none`}
+                  className={`w-full h-full rounded-2xl ${theme.bg} active:scale-95 transition-all p-2.5 sm:p-4 flex items-center ${
+                    showQuestionOnPlayer ? 'justify-start' : 'justify-center'
+                  } gap-2.5 sm:gap-3.5 shadow-lg border-2 border-white/20 select-none min-h-[48px] overflow-hidden`}
                 >
-                  <div className="mb-2 p-2 bg-white/10 rounded-xl">
+                  <div className="p-2 sm:p-2.5 bg-white/15 rounded-xl shrink-0 flex items-center justify-center">
                     {theme.shape}
                   </div>
-                  {optText && optText.length <= 30 && (
-                    <span className="text-sm sm:text-base font-bold text-center line-clamp-2 px-1">
-                      {optText}
-                    </span>
+                  {showQuestionOnPlayer ? (
+                    <div className="flex-1 min-w-0 text-left overflow-y-auto max-h-full pr-1">
+                      <span className="text-[clamp(1rem,3.4vw,1.25rem)] font-extrabold leading-snug break-words block text-white drop-shadow-xs">
+                        {optText}
+                      </span>
+                    </div>
+                  ) : (
+                    optText && optText.length <= 30 && (
+                      <span className="text-sm sm:text-base font-bold text-center line-clamp-2 px-1">
+                        {optText}
+                      </span>
+                    )
                   )}
                 </button>
               );
@@ -428,7 +456,6 @@ export const PlayerGamePage: React.FC = () => {
 
   // 5. FINISHED PODIUM SCREEN
   if (gameMeta.status === 'finished') {
-    // Sort all players to find personal rank
     const sorted = Object.values(allPlayers).sort((a, b) => b.score - a.score);
     const myRank = sorted.findIndex((p) => p.uid === playerSession?.uid) + 1;
     const isTopThree = myRank <= 3 && myRank > 0;

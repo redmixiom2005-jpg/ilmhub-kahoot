@@ -130,6 +130,7 @@ export const translations = {
     exportResultsCsv: 'Export CSV Report',
     playAgain: 'Play Again',
     returnToDashboard: 'Host Dashboard',
+    showQuestionOnPlayers: 'Show question on player devices',
 
     // Quiz Editor
     quizEditorTitle: 'Quiz Editor',
@@ -339,6 +340,7 @@ export const translations = {
     exportResultsCsv: 'Экспорт отчёта CSV',
     playAgain: 'Сыграть снова',
     returnToDashboard: 'В панель управления',
+    showQuestionOnPlayers: 'Показывать вопрос на экранах игроков',
 
     // Quiz Editor
     quizEditorTitle: 'Редактор викторины',
@@ -548,6 +550,7 @@ export const translations = {
     exportResultsCsv: 'CSV hisobotni yuklab olish',
     playAgain: 'Qaytadan o‘ynash',
     returnToDashboard: 'Boshqaruv paneliga',
+    showQuestionOnPlayers: "Savolni ishtirokchilar ekranida ko'rsatish",
 
     // Quiz Editor
     quizEditorTitle: 'Viktorina muharriri',

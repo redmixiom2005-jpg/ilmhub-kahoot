@@ -44,6 +44,7 @@ import {
   Minus,
   Sparkles,
   StopCircle,
+  Smartphone,
 } from 'lucide-react';
 
 export const LiveHostGamePage: React.FC = () => {
@@ -319,6 +320,14 @@ export const LiveHostGamePage: React.FC = () => {
   };
 
   const playerList = Object.values(players);
+  const showQuestionOnPlayers = gameMeta?.showQuestionOnPlayers !== false;
+
+  const handleToggleShowQuestionOnPlayers = async () => {
+    if (!pin || !gameMeta) return;
+    sound.playClick();
+    const nextVal = !showQuestionOnPlayers;
+    await updateGameStatus(pin, gameMeta.status, { showQuestionOnPlayers: nextVal });
+  };
 
   // 1. LOBBY VIEW (PROJECTOR)
   if (!gameMeta || gameMeta.status === 'lobby') {
@@ -410,6 +419,39 @@ export const LiveHostGamePage: React.FC = () => {
               Tip: Press Space to start game when players have joined
             </div>
           </div>
+        </div>
+
+        {/* Lobby Setting: Show question on player devices */}
+        <div className="max-w-6xl mx-auto w-full bg-white/10 backdrop-blur-md px-5 py-3 rounded-2xl border border-white/15 flex items-center justify-between gap-4 mb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-amber-400/20 text-yellow-300 shrink-0">
+              <Smartphone className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="font-bold text-sm text-white block">
+                {t('showQuestionOnPlayers')}
+              </span>
+              <span className="text-xs text-slate-300 hidden sm:inline">
+                Display question text, media, and choices directly on students' screens
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleToggleShowQuestionOnPlayers}
+            className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+              showQuestionOnPlayers ? 'bg-amber-400' : 'bg-slate-700'
+            }`}
+            role="switch"
+            aria-checked={showQuestionOnPlayers}
+          >
+            <span
+              className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-slate-950 shadow-md transition duration-200 ease-in-out ${
+                showQuestionOnPlayers ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </button>
         </div>
 
         {/* Bottom Controls */}

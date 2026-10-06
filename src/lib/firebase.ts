@@ -501,6 +501,7 @@ export async function createGameSession(
         totalQuestions: quiz.questions.length,
         createdAt: Date.now(),
         showLeaderboardAfterQuestion: true,
+        showQuestionOnPlayers: true,
         randomizeQuestions: false,
         randomizeAnswers: false,
       };
@@ -551,6 +552,7 @@ export async function createGameSession(
     currentIndex: 0,
     totalQuestions: quiz.questions.length,
     createdAt: Date.now(),
+    showQuestionOnPlayers: true,
   };
 
   setLocalNode(`games/${pin}/meta`, meta);
