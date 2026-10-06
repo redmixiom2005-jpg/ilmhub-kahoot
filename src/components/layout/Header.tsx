@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Logo } from '../common/Logo';
 import { LanguageSelect } from '../common/LanguageSelect';
@@ -7,20 +7,69 @@ import { SoundToggle } from '../common/SoundToggle';
 import { FirebaseSetupModal } from '../common/FirebaseSetupModal';
 import { useI18n } from '../../i18n';
 import { useGameStore } from '../../store/gameStore';
-import { isFirebaseConfigured, logoutUser } from '../../lib/firebase';
-import { Database, LogOut, User, Sparkles } from 'lucide-react';
+import {
+  logoutUser,
+  subscribeConnectionStatus,
+  ConnectionBadgeStatus,
+} from '../../lib/firebase';
+import { LogOut, User, Sparkles, Activity } from 'lucide-react';
 
 export const Header: React.FC = () => {
   const { t } = useI18n();
   const navigate = useNavigate();
   const { hostUser, setHostUser } = useGameStore();
   const [showFirebaseModal, setShowFirebaseModal] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionBadgeStatus>('connecting');
+
+  useEffect(() => {
+    const unsub = subscribeConnectionStatus((status) => {
+      setConnectionStatus(status);
+    });
+    return () => unsub();
+  }, []);
 
   const handleSignOut = async () => {
     await logoutUser();
     setHostUser(null);
     navigate('/');
   };
+
+  const getStatusBadge = () => {
+    switch (connectionStatus) {
+      case 'connected':
+        return {
+          label: 'Connected',
+          badgeClass: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800',
+          dotClass: 'bg-emerald-500 animate-pulse',
+        };
+      case 'connecting':
+        return {
+          label: 'Connecting...',
+          badgeClass: 'bg-yellow-50 dark:bg-yellow-950/40 text-yellow-700 dark:text-yellow-400 border-yellow-300 dark:border-yellow-800',
+          dotClass: 'bg-yellow-500 animate-ping',
+        };
+      case 'offline':
+        return {
+          label: 'Offline',
+          badgeClass: 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border-rose-300 dark:border-rose-800',
+          dotClass: 'bg-rose-500',
+        };
+      case 'missing-config':
+        return {
+          label: 'Missing Config',
+          badgeClass: 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border-rose-300 dark:border-rose-800',
+          dotClass: 'bg-rose-500 animate-bounce',
+        };
+      default:
+        return {
+          label: 'Demo Mode',
+          badgeClass: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-yellow-400 border-amber-300 dark:border-yellow-800',
+          dotClass: 'bg-amber-500',
+        };
+    }
+  };
+
+  const statusConfig = getStatusBadge();
 
   return (
     <>
@@ -31,18 +80,15 @@ export const Header: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Realtime Database status indicator */}
+            {/* Realtime Connection Status Badge */}
             <button
               onClick={() => setShowFirebaseModal(true)}
-              title={isFirebaseConfigured ? 'Firebase Active' : 'Demo / Local Mode'}
-              className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
-                isFirebaseConfigured
-                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
-                  : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-yellow-400 border-amber-200 dark:border-yellow-800'
-              }`}
+              title="Firebase RTDB Connection Status"
+              className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold border transition-all hover:scale-105 ${statusConfig.badgeClass}`}
             >
-              <Database className="w-3.5 h-3.5" />
-              <span>{isFirebaseConfigured ? 'Firebase' : 'Demo Mode'}</span>
+              <span className={`w-2 h-2 rounded-full ${statusConfig.dotClass}`} />
+              <span className="hidden xs:inline">{statusConfig.label}</span>
+              <Activity className="w-3.5 h-3.5 opacity-60" />
             </button>
 
             {/* Host Dashboard Link / Host Auth */}

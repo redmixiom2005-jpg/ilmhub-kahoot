@@ -1,23 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useI18n } from '../../i18n';
 import { useGameStore } from '../../store/gameStore';
-import {
-  loginAnonymously,
-  subscribeGameMeta,
-  subscribePlayers,
-  registerPlayer,
-} from '../../lib/firebase';
-import { GameMeta, Player } from '../../types/quiz';
+import { joinGameAsStudent, extractFirebaseError } from '../../lib/firebase';
 import { sound } from '../../lib/audio';
 import { Logo } from '../../components/common/Logo';
-import { Gamepad2, ArrowLeft, ArrowRight, User, AlertCircle } from 'lucide-react';
+import { Gamepad2, ArrowLeft, ArrowRight, User, AlertCircle, Loader2 } from 'lucide-react';
 
 export const JoinPage: React.FC = () => {
   const { pin: urlPin } = useParams<{ pin?: string }>();
   const navigate = useNavigate();
   const { t } = useI18n();
-  const { setPlayerSession } = useGameStore();
+  const { setPlayerSession, showToast } = useGameStore();
 
   const [step, setStep] = useState<1 | 2>(urlPin && urlPin.length === 6 ? 2 : 1);
   const [pin, setPin] = useState(urlPin || '');
@@ -25,25 +19,6 @@ export const JoinPage: React.FC = () => {
   const [lastName, setLastName] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [gameMeta, setGameMeta] = useState<GameMeta | null>(null);
-  const [existingPlayers, setExistingPlayers] = useState<Record<string, Player>>({});
-
-  // Auto-listen to the game if PIN is entered
-  useEffect(() => {
-    if (pin.length === 6) {
-      const unsubMeta = subscribeGameMeta(pin, (meta) => {
-        setGameMeta(meta);
-      });
-      const unsubPlayers = subscribePlayers(pin, (players) => {
-        setExistingPlayers(players || {});
-      });
-
-      return () => {
-        unsubMeta();
-        unsubPlayers();
-      };
-    }
-  }, [pin]);
 
   const handleStep1Next = (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,55 +60,34 @@ export const JoinPage: React.FC = () => {
     setLoading(true);
 
     try {
-      // Check game availability
-      if (gameMeta && gameMeta.status !== 'lobby' && gameMeta.status !== 'countdown') {
-        setErrorMessage(t('gameAlreadyStartedError'));
-        setLoading(false);
-        return;
-      }
+      // 1. Anonymous auth -> Check lobby -> Register player node -> onDisconnect
+      const registeredPlayer = await joinGameAsStudent(pin, trimmedFirst, trimmedLast);
 
-      // Check name uniqueness in the room
-      const fullName = `${trimmedFirst} ${trimmedLast}`.toLowerCase();
-      const duplicateFound = Object.values(existingPlayers).some(
-        (p) => `${p.firstName} ${p.lastName}`.toLowerCase() === fullName
-      );
-
-      let finalFirstName = trimmedFirst;
-      if (duplicateFound) {
-        finalFirstName = `${trimmedFirst} (${Math.floor(Math.random() * 89 + 10)})`;
-      }
-
-      // Anonymous authentication for student
-      const authUser = await loginAnonymously();
-
-      const newPlayer: Player = {
-        uid: authUser.uid,
-        firstName: finalFirstName,
-        lastName: trimmedLast,
-        nickname: `${finalFirstName} ${trimmedLast}`,
-        score: 0,
-        streak: 0,
-        joinedAt: Date.now(),
-        connected: true,
-        avatarSeed: authUser.uid.slice(-4),
-      };
-
-      await registerPlayer(pin, newPlayer);
-
+      // 2. Persist session
       setPlayerSession({
         pin,
-        uid: authUser.uid,
-        firstName: finalFirstName,
-        lastName: trimmedLast,
-        score: 0,
-        streak: 0,
+        uid: registeredPlayer.uid,
+        firstName: registeredPlayer.firstName,
+        lastName: registeredPlayer.lastName,
+        score: registeredPlayer.score,
+        streak: registeredPlayer.streak,
       });
 
       sound.playCorrect();
+      showToast(`Joined as ${registeredPlayer.firstName}!`);
       navigate(`/play/${pin}`);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : t('error');
-      setErrorMessage(msg);
+      console.error('[JoinPage] Join error:', err);
+      const errMsg = err instanceof Error ? err.message : String(err);
+
+      if (errMsg === 'GAME_NOT_FOUND') {
+        setErrorMessage(t('gameNotFoundError'));
+      } else if (errMsg === 'GAME_ALREADY_STARTED') {
+        setErrorMessage(t('gameAlreadyStartedError'));
+      } else {
+        const { code, message } = extractFirebaseError(err);
+        setErrorMessage(`Join failed [${code}]: ${message}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -261,8 +215,17 @@ export const JoinPage: React.FC = () => {
                 disabled={loading}
                 className="w-full mt-4 py-4 px-6 rounded-2xl bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black text-lg shadow-lg active:scale-98 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                <Gamepad2 className="w-6 h-6" />
-                <span>{loading ? t('loading') : t('joinButton')}</span>
+                {loading ? (
+                  <>
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                    <span>Connecting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Gamepad2 className="w-6 h-6" />
+                    <span>{t('joinButton')}</span>
+                  </>
+                )}
               </button>
             </form>
           </div>

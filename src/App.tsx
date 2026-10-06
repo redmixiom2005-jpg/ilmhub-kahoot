@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { Header } from './components/layout/Header';
 import { Footer } from './components/layout/Footer';
+import { MissingConfigBanner } from './components/common/MissingConfigBanner';
 import { LandingPage } from './features/landing/LandingPage';
 import { JoinPage } from './features/join/JoinPage';
 import { PlayerGamePage } from './features/player/PlayerGamePage';
@@ -33,6 +34,7 @@ function AppLayout() {
 
   return (
     <div className="min-h-[100dvh] flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
+      <MissingConfigBanner />
       {!isImmersiveScreen && <Header />}
 
       <main className="flex-1">

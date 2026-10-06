@@ -6,7 +6,7 @@
         ".write": "auth != null && auth.uid == $uid",
         "quizzes": {
           "$quizId": {
-            ".validate": "newData.hasChildren(['id', 'title', 'questions'])"
+            ".validate": "newData.hasChildren(['id', 'title'])"
           }
         }
       }
@@ -16,15 +16,15 @@
         "meta": {
           ".read": true,
           ".write": "auth != null && (!data.exists() || data.child('hostUid').val() == auth.uid)",
-          ".validate": "newData.hasChildren(['pin', 'hostUid', 'status'])"
+          ".validate": "newData.hasChildren(['hostUid', 'status'])"
         },
         "questions": {
           ".read": true,
-          ".write": "auth != null && root.child('games').child($pin).child('meta/hostUid').val() == auth.uid"
+          ".write": "auth != null && (root.child('games').child($pin).child('meta/hostUid').val() == auth.uid || newData.parent().child('meta/hostUid').val() == auth.uid)"
         },
         "secret": {
           ".read": "auth != null && root.child('games').child($pin).child('meta/hostUid').val() == auth.uid",
-          ".write": "auth != null && root.child('games').child($pin).child('meta/hostUid').val() == auth.uid"
+          ".write": "auth != null && (root.child('games').child($pin).child('meta/hostUid').val() == auth.uid || newData.parent().child('meta/hostUid').val() == auth.uid)"
         },
         "players": {
           ".read": true,
@@ -34,7 +34,7 @@
           }
         },
         "answers": {
-          "$questionIndex": {
+          "$q": {
             ".read": "auth != null && root.child('games').child($pin).child('meta/hostUid').val() == auth.uid",
             "$uid": {
               ".write": "auth != null && auth.uid == $uid && !data.exists()",

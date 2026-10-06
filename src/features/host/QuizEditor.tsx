@@ -1,8 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useI18n } from '../../i18n';
 import { useGameStore } from '../../store/gameStore';
-import { getQuizById, saveUserQuiz } from '../../lib/firebase';
+import {
+  getQuizById,
+  saveUserQuiz,
+  getCurrentAuthUser,
+  extractFirebaseError,
+  stripUndefined,
+} from '../../lib/firebase';
 import { Quiz, Question, QuestionType, PointsMode } from '../../types/quiz';
 import { sound } from '../../lib/audio';
 import {
@@ -13,19 +19,19 @@ import {
   ChevronUp,
   ChevronDown,
   CheckCircle,
-  Eye,
   Save,
   Clock,
-  Sparkles,
   Image as ImageIcon,
   AlertCircle,
+  Loader2,
+  RefreshCw,
 } from 'lucide-react';
 
 export const QuizEditor: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { t } = useI18n();
-  const { hostUser, showToast } = useGameStore();
+  const { hostUser, setHostUser, showToast } = useGameStore();
 
   const isNew = id === 'new';
   const [quizId] = useState(isNew ? `quiz-${Date.now()}` : (id || ''));
@@ -37,85 +43,117 @@ export const QuizEditor: React.FC = () => {
   const [selectedQuestionIndex, setSelectedQuestionIndex] = useState(0);
 
   const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [lastSavedTime, setLastSavedTime] = useState<number | null>(null);
-  const [errors, setErrors] = useState<string[]>([]);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const hasLoadedRef = useRef(false);
 
-  // Load existing quiz or initialize blank
+  // Load existing quiz or initialize with default template
   useEffect(() => {
     const load = async () => {
-      const uid = hostUser ? hostUser.uid : 'guest-host';
-      if (!isNew && id) {
-        const existing = await getQuizById(uid, id);
-        if (existing) {
-          setTitle(existing.title);
-          setDescription(existing.description || '');
-          setCoverImageUrl(existing.coverImageUrl || '');
-          setDefaultTimeLimit(existing.defaultTimeLimit || 20);
-          setQuestions(existing.questions || []);
-          hasLoadedRef.current = true;
-          return;
+      try {
+        const currentUser = await getCurrentAuthUser();
+        if (currentUser) {
+          setHostUser(currentUser);
         }
-      }
 
-      // Default first question
-      setTitle('New Ilmhub Quiz');
-      setQuestions([
-        {
-          id: `q-${Date.now()}-1`,
-          type: 'quiz',
-          text: 'What is the capital city of Uzbekistan?',
-          options: ['Samarkand', 'Tashkent', 'Bukhara', 'Khiva'],
-          correctAnswers: [1],
-          timeLimit: 20,
-          pointsMode: 'standard',
-        },
-      ]);
-      hasLoadedRef.current = true;
+        const uid = currentUser?.uid || hostUser?.uid;
+
+        if (!isNew && id && uid) {
+          const existing = await getQuizById(uid, id);
+          if (existing) {
+            setTitle(existing.title || '');
+            setDescription(existing.description || '');
+            setCoverImageUrl(existing.coverImageUrl || '');
+            setDefaultTimeLimit(existing.defaultTimeLimit || 20);
+            setQuestions(existing.questions || []);
+            hasLoadedRef.current = true;
+            return;
+          }
+        }
+
+        // Default initial question for new quizzes
+        setTitle('New Ilmhub Quiz');
+        setQuestions([
+          {
+            id: `q-${Date.now()}-1`,
+            type: 'quiz',
+            text: 'What is the capital city of Uzbekistan?',
+            options: ['Samarkand', 'Tashkent', 'Bukhara', 'Khiva'],
+            correctAnswers: [1],
+            timeLimit: 20,
+            pointsMode: 'standard',
+          },
+        ]);
+        hasLoadedRef.current = true;
+      } catch (err) {
+        console.error('[QuizEditor] Failed to load quiz:', err);
+        const { code, message } = extractFirebaseError(err);
+        showToast(`Failed to load quiz [${code}]: ${message}`);
+      }
     };
 
     load();
-  }, [id, isNew, hostUser]);
+  }, [id, isNew, hostUser, setHostUser, showToast]);
 
-  // Debounced Autosave
+  // Execute Save Routine
+  const performSave = useCallback(async () => {
+    const currentUser = await getCurrentAuthUser();
+    const uid = currentUser?.uid || hostUser?.uid;
+
+    if (!uid) {
+      setSaveError('Please sign in with Google to save quizzes.');
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveError(null);
+
+    const quizToSave: Quiz = stripUndefined({
+      id: quizId,
+      title: title.trim() || 'Untitled Quiz',
+      description: description.trim(),
+      coverImageUrl: coverImageUrl.trim(),
+      defaultTimeLimit,
+      questions,
+      createdBy: uid,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    try {
+      await saveUserQuiz(uid, quizToSave);
+      setLastSavedTime(Date.now());
+      setSaveError(null);
+    } catch (err) {
+      console.error('[QuizEditor] Save failed:', err);
+      const { code, message } = extractFirebaseError(err);
+      setSaveError(`Save failed [${code}]: ${message}`);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [quizId, title, description, coverImageUrl, defaultTimeLimit, questions, hostUser]);
+
+  // Debounced Autosave (1.5s after user stops typing)
   useEffect(() => {
     if (!hasLoadedRef.current) return;
     if (!title.trim() && questions.length === 0) return;
 
-    const timer = setTimeout(async () => {
-      setIsSaving(true);
-      const uid = hostUser ? hostUser.uid : 'guest-host';
-      const quizToSave: Quiz = {
-        id: quizId,
-        title: title.trim() || 'Untitled Quiz',
-        description: description.trim(),
-        coverImageUrl: coverImageUrl.trim() || undefined,
-        defaultTimeLimit,
-        questions,
-        createdBy: uid,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-
-      try {
-        await saveUserQuiz(uid, quizToSave);
-        setLastSavedTime(Date.now());
-      } catch (err) {
-        console.error('Autosave error:', err);
-      } finally {
-        setIsSaving(false);
-      }
-    }, 1200);
+    const timer = setTimeout(() => {
+      performSave();
+    }, 1500);
 
     return () => clearTimeout(timer);
-  }, [title, description, coverImageUrl, defaultTimeLimit, questions, quizId, hostUser]);
+  }, [title, description, coverImageUrl, defaultTimeLimit, questions, performSave]);
 
   const activeQuestion = questions[selectedQuestionIndex];
 
   const updateActiveQuestion = (patch: Partial<Question>) => {
     setQuestions((prev) => {
       const copy = [...prev];
-      copy[selectedQuestionIndex] = { ...copy[selectedQuestionIndex], ...patch };
+      if (copy[selectedQuestionIndex]) {
+        copy[selectedQuestionIndex] = { ...copy[selectedQuestionIndex], ...patch };
+      }
       return copy;
     });
   };
@@ -138,6 +176,8 @@ export const QuizEditor: React.FC = () => {
   const handleDuplicateQuestion = (idx: number) => {
     sound.playClick();
     const q = questions[idx];
+    if (!q) return;
+
     const cloned: Question = {
       ...q,
       id: `q-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -190,47 +230,32 @@ export const QuizEditor: React.FC = () => {
 
   const handleManualSave = async () => {
     sound.playClick();
-    // Validate
-    const validationErrors: string[] = [];
-    if (!title.trim()) validationErrors.push(t('emptyQuestionText'));
+    const issues: string[] = [];
+    if (!title.trim()) issues.push(t('emptyQuestionText'));
 
     questions.forEach((q, idx) => {
       if (!q.text.trim()) {
-        validationErrors.push(`Q${idx + 1}: ${t('emptyQuestionText')}`);
+        issues.push(`Q${idx + 1}: ${t('emptyQuestionText')}`);
       }
       if (q.type === 'quiz') {
         const nonEmpty = q.options.filter((o) => o.trim().length > 0);
         if (nonEmpty.length < 2) {
-          validationErrors.push(`Q${idx + 1}: ${t('atLeastTwoOptions')}`);
+          issues.push(`Q${idx + 1}: ${t('atLeastTwoOptions')}`);
         }
       }
       if (q.correctAnswers.length === 0) {
-        validationErrors.push(`Q${idx + 1}: ${t('atLeastOneCorrect')}`);
+        issues.push(`Q${idx + 1}: ${t('atLeastOneCorrect')}`);
       }
     });
 
-    setErrors(validationErrors);
-    if (validationErrors.length > 0) return;
+    setValidationErrors(issues);
+    if (issues.length > 0) return;
 
-    setIsSaving(true);
-    const uid = hostUser ? hostUser.uid : 'guest-host';
-    const quizToSave: Quiz = {
-      id: quizId,
-      title: title.trim() || 'Untitled Quiz',
-      description: description.trim(),
-      coverImageUrl: coverImageUrl.trim() || undefined,
-      defaultTimeLimit,
-      questions,
-      createdBy: uid,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-
-    await saveUserQuiz(uid, quizToSave);
-    setIsSaving(false);
-    setLastSavedTime(Date.now());
-    showToast(t('quizSavedSuccess'));
-    navigate('/host');
+    await performSave();
+    if (!saveError) {
+      showToast(t('quizSavedSuccess'));
+      navigate('/host');
+    }
   };
 
   return (
@@ -248,11 +273,26 @@ export const QuizEditor: React.FC = () => {
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
               {t('quizEditorTitle')}
             </h1>
-            <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
+            <div className="flex items-center gap-2 text-xs mt-0.5">
               {isSaving ? (
-                <span className="text-amber-500 font-semibold">{t('saving')}</span>
+                <span className="text-amber-500 font-bold flex items-center gap-1">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>{t('saving')}</span>
+                </span>
+              ) : saveError ? (
+                <span className="text-rose-500 font-bold flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{saveError}</span>
+                  <button
+                    onClick={performSave}
+                    className="ml-2 underline hover:text-rose-600 font-extrabold flex items-center gap-0.5"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Retry</span>
+                  </button>
+                </span>
               ) : lastSavedTime ? (
-                <span className="text-emerald-500 font-semibold flex items-center gap-1">
+                <span className="text-emerald-500 font-bold flex items-center gap-1">
                   <CheckCircle className="w-3.5 h-3.5" />
                   <span>{t('saved')}</span>
                 </span>
@@ -264,21 +304,22 @@ export const QuizEditor: React.FC = () => {
         <div className="flex items-center gap-3">
           <button
             onClick={handleManualSave}
-            className="px-5 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-sm shadow-md transition-all active:scale-95 flex items-center gap-2"
+            disabled={isSaving}
+            className="px-5 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-sm shadow-md transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50"
           >
-            <Save className="w-4 h-4" />
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             <span>{t('save')}</span>
           </button>
         </div>
       </div>
 
-      {errors.length > 0 && (
+      {validationErrors.length > 0 && (
         <div className="mb-6 p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 text-xs space-y-1">
           <div className="font-bold flex items-center gap-1.5 mb-1 text-sm">
             <AlertCircle className="w-4 h-4" />
             <span>Validation issues</span>
           </div>
-          {errors.map((err, i) => (
+          {validationErrors.map((err, i) => (
             <div key={i}>• {err}</div>
           ))}
         </div>
@@ -288,7 +329,7 @@ export const QuizEditor: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Sidebar: Questions list & Reordering */}
         <div className="lg:col-span-4 space-y-4">
-          {/* Quiz General Settings Accordion / Box */}
+          {/* Quiz General Settings Box */}
           <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
@@ -337,7 +378,7 @@ export const QuizEditor: React.FC = () => {
                   }`}
                 >
                   <div className="flex items-center gap-2 truncate">
-                    <span className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 flex items-center justify-center text-[10px] shrink-0">
+                    <span className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 flex items-center justify-center text-[10px] shrink-0 font-bold">
                       {idx + 1}
                     </span>
                     <span className="truncate">
@@ -401,7 +442,8 @@ export const QuizEditor: React.FC = () => {
               {/* Question Header & Controls */}
               <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
                 <span className="font-extrabold text-sm text-slate-900 dark:text-white">
-                  Question {selectedQuestionIndex + 1} ({activeQuestion.type === 'truefalse' ? 'True / False' : '4-Option'})
+                  Question {selectedQuestionIndex + 1} (
+                  {activeQuestion.type === 'truefalse' ? 'True / False' : '4-Option'})
                 </span>
 
                 <div className="flex items-center gap-2">
@@ -442,8 +484,9 @@ export const QuizEditor: React.FC = () => {
               {/* Time Limit & Points Mode */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                    {t('timeLimitLabel')}
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5 flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>{t('timeLimitLabel')}</span>
                   </label>
                   <select
                     value={activeQuestion.timeLimit}
@@ -474,7 +517,7 @@ export const QuizEditor: React.FC = () => {
                 </div>
               </div>
 
-              {/* Image URL (Optional) */}
+              {/* Cover Image URL */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5 flex items-center gap-1.5">
                   <ImageIcon className="w-3.5 h-3.5" />
@@ -492,7 +535,7 @@ export const QuizEditor: React.FC = () => {
               {/* Answer Options Configuration */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-                  Answer Options (Click checkmark to select correct answer)
+                  Answer Options (Click to designate the correct answer)
                 </label>
 
                 {activeQuestion.type === 'truefalse' ? (
@@ -510,7 +553,11 @@ export const QuizEditor: React.FC = () => {
                               : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40'
                           }`}
                         >
-                          <span className={`text-lg font-black ${isTrue ? 'text-blue-600 dark:text-blue-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                          <span
+                            className={`text-lg font-black ${
+                              isTrue ? 'text-blue-600 dark:text-blue-400' : 'text-rose-600 dark:text-rose-400'
+                            }`}
+                          >
                             {tf}
                           </span>
                           <div

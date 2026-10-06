@@ -43,6 +43,7 @@ export interface GameMeta {
   status: GameStatus;
   currentIndex: number;
   totalQuestions: number;
+  createdAt?: number;
   startedAt?: number;
   endsAt?: number;
   serverTime?: number;

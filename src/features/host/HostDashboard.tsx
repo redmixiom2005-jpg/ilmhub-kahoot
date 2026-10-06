@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useI18n } from '../../i18n';
 import { useGameStore } from '../../store/gameStore';
@@ -8,9 +8,11 @@ import {
   deleteUserQuiz,
   loginWithGoogle,
   subscribeAuth,
+  getCurrentAuthUser,
   createGameSession,
+  extractFirebaseError,
 } from '../../lib/firebase';
-import { Quiz, GameMeta, PublicQuestion, SecretQuestionData } from '../../types/quiz';
+import { Quiz } from '../../types/quiz';
 import { SAMPLE_QUIZZES } from '../../data/sampleQuizzes';
 import { sound } from '../../lib/audio';
 import {
@@ -25,7 +27,9 @@ import {
   BookOpen,
   Clock,
   Layers,
-  CheckCircle,
+  AlertCircle,
+  RefreshCw,
+  Loader2,
 } from 'lucide-react';
 
 export const HostDashboard: React.FC = () => {
@@ -35,9 +39,10 @@ export const HostDashboard: React.FC = () => {
 
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [startingGameId, setStartingGameId] = useState<string | null>(null);
 
-  // Subscribe to auth state
+  // Subscribe to auth state changes
   useEffect(() => {
     const unsub = subscribeAuth((user) => {
       setHostUser(user);
@@ -45,22 +50,34 @@ export const HostDashboard: React.FC = () => {
     return () => unsub();
   }, [setHostUser]);
 
-  // Load user quizzes
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      if (hostUser) {
-        const userQuizzes = await getUserQuizzes(hostUser.uid);
+  // Load user quizzes after verifying authentication
+  const loadQuizzes = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+
+    try {
+      const currentUser = await getCurrentAuthUser();
+      if (currentUser && currentUser.uid) {
+        setHostUser(currentUser);
+        const userQuizzes = await getUserQuizzes(currentUser.uid);
         setQuizzes(userQuizzes);
       } else {
-        // Load default/local quizzes
-        const local = await getUserQuizzes('guest-host');
-        setQuizzes(local);
+        // Not authenticated yet
+        setQuizzes([]);
       }
+    } catch (err) {
+      console.error('[HostDashboard] Error loading quizzes:', err);
+      const { code, message } = extractFirebaseError(err);
+      setLoadError(`${code}: ${message}`);
+      showToast(`Error [${code}]: ${message}`);
+    } finally {
       setLoading(false);
-    };
-    load();
-  }, [hostUser]);
+    }
+  }, [setHostUser, showToast]);
+
+  useEffect(() => {
+    loadQuizzes();
+  }, [loadQuizzes]);
 
   const handleHostLogin = async () => {
     sound.playClick();
@@ -68,15 +85,18 @@ export const HostDashboard: React.FC = () => {
       const user = await loginWithGoogle();
       setHostUser(user);
       showToast('Logged in successfully!');
+      loadQuizzes();
     } catch (err: unknown) {
-      console.error('Login error:', err);
+      console.error('[HostDashboard] Login error:', err);
+      const { code, message } = extractFirebaseError(err);
+      showToast(`Login failed [${code}]: ${message}`);
     }
   };
 
-  // Launch live game session
+  // Launch live game session using atomic createGameSession
   const handleStartGame = async (quiz: Quiz) => {
     sound.playClick();
-    if (quiz.questions.length === 0) {
+    if (!quiz.questions || quiz.questions.length === 0) {
       showToast('Cannot start a quiz without questions!');
       return;
     }
@@ -84,49 +104,24 @@ export const HostDashboard: React.FC = () => {
     setStartingGameId(quiz.id);
 
     try {
-      // Generate unique 6-digit PIN
-      const pin = Math.floor(100000 + Math.random() * 900000).toString();
-      const hostUid = hostUser ? hostUser.uid : 'guest-host';
+      const currentUser = await getCurrentAuthUser();
+      const hostUid = currentUser?.uid || hostUser?.uid;
 
-      const meta: GameMeta = {
-        pin,
-        quizId: quiz.id,
-        quizTitle: quiz.title,
-        hostUid,
-        status: 'lobby',
-        currentIndex: 0,
-        totalQuestions: quiz.questions.length,
-        showLeaderboardAfterQuestion: true,
-        randomizeQuestions: false,
-        randomizeAnswers: false,
-      };
+      if (!hostUid) {
+        showToast('Please sign in with Google to host a live game.');
+        setStartingGameId(null);
+        return;
+      }
 
-      // Prepare public questions (WITHOUT correct answers!)
-      const publicQuestions: PublicQuestion[] = quiz.questions.map((q, idx) => ({
-        id: q.id,
-        type: q.type,
-        text: q.text,
-        options: q.options,
-        timeLimit: q.timeLimit,
-        pointsMode: q.pointsMode,
-        imageUrl: q.imageUrl,
-        questionNumber: idx + 1,
-        totalQuestions: quiz.questions.length,
-      }));
-
-      // Prepare secret questions (ONLY host can access)
-      const secretQuestions: SecretQuestionData[] = quiz.questions.map((q) => ({
-        correctAnswers: q.correctAnswers,
-        explanation: q.explanation,
-      }));
-
-      await createGameSession(pin, meta, publicQuestions, secretQuestions);
+      const pin = await createGameSession(quiz, hostUid);
 
       sound.playCorrect();
+      showToast(`Game created! PIN: ${pin}`);
       navigate(`/host/game/${pin}`);
     } catch (err) {
-      console.error('Failed to create game session:', err);
-      showToast('Failed to start game session.');
+      console.error('[HostDashboard] Failed to start game session:', err);
+      const { code, message } = extractFirebaseError(err);
+      showToast(`Failed to start game [${code}]: ${message}`);
     } finally {
       setStartingGameId(null);
     }
@@ -134,27 +129,49 @@ export const HostDashboard: React.FC = () => {
 
   const handleDuplicateQuiz = async (quiz: Quiz) => {
     sound.playClick();
-    const uid = hostUser ? hostUser.uid : 'guest-host';
-    const duplicated: Quiz = {
-      ...quiz,
-      id: `quiz-${Date.now()}`,
-      title: `${quiz.title} (Copy)`,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      createdBy: uid,
-    };
-    await saveUserQuiz(uid, duplicated);
-    setQuizzes((prev) => [duplicated, ...prev]);
-    showToast(t('copied'));
+    const currentUser = await getCurrentAuthUser();
+    const uid = currentUser?.uid || hostUser?.uid;
+
+    if (!uid) {
+      showToast('Please sign in to duplicate quizzes.');
+      return;
+    }
+
+    try {
+      const duplicated: Quiz = {
+        ...quiz,
+        id: `quiz-${Date.now()}`,
+        title: `${quiz.title} (Copy)`,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        createdBy: uid,
+      };
+
+      await saveUserQuiz(uid, duplicated);
+      setQuizzes((prev) => [duplicated, ...prev]);
+      showToast(t('copied'));
+    } catch (err) {
+      const { code, message } = extractFirebaseError(err);
+      showToast(`Failed to duplicate [${code}]: ${message}`);
+    }
   };
 
   const handleDeleteQuiz = async (quizId: string) => {
     if (!window.confirm(t('deleteQuizConfirm'))) return;
     sound.playClick();
-    const uid = hostUser ? hostUser.uid : 'guest-host';
-    await deleteUserQuiz(uid, quizId);
-    setQuizzes((prev) => prev.filter((q) => q.id !== quizId));
-    showToast('Quiz deleted');
+    const currentUser = await getCurrentAuthUser();
+    const uid = currentUser?.uid || hostUser?.uid;
+
+    if (!uid) return;
+
+    try {
+      await deleteUserQuiz(uid, quizId);
+      setQuizzes((prev) => prev.filter((q) => q.id !== quizId));
+      showToast('Quiz deleted');
+    } catch (err) {
+      const { code, message } = extractFirebaseError(err);
+      showToast(`Delete failed [${code}]: ${message}`);
+    }
   };
 
   const handleExportJson = (quiz: Quiz) => {
@@ -172,17 +189,29 @@ export const HostDashboard: React.FC = () => {
 
   const handleClonePreset = async (preset: Quiz) => {
     sound.playClick();
-    const uid = hostUser ? hostUser.uid : 'guest-host';
-    const cloned: Quiz = {
-      ...preset,
-      id: `quiz-preset-${Date.now()}`,
-      createdBy: uid,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    await saveUserQuiz(uid, cloned);
-    setQuizzes((prev) => [cloned, ...prev]);
-    showToast('Sample quiz added to your library!');
+    const currentUser = await getCurrentAuthUser();
+    const uid = currentUser?.uid || hostUser?.uid;
+
+    if (!uid) {
+      showToast('Please sign in to copy sample quizzes to your account.');
+      return;
+    }
+
+    try {
+      const cloned: Quiz = {
+        ...preset,
+        id: `quiz-preset-${Date.now()}`,
+        createdBy: uid,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      await saveUserQuiz(uid, cloned);
+      setQuizzes((prev) => [cloned, ...prev]);
+      showToast('Sample quiz added to your library!');
+    } catch (err) {
+      const { code, message } = extractFirebaseError(err);
+      showToast(`Failed to copy sample [${code}]: ${message}`);
+    }
   };
 
   return (
@@ -195,39 +224,46 @@ export const HostDashboard: React.FC = () => {
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             {hostUser ? (
-              <span>Logged in as: <strong className="text-slate-900 dark:text-white">{hostUser.displayName || hostUser.email}</strong></span>
+              <span>
+                Signed in as:{' '}
+                <strong className="text-slate-900 dark:text-white">
+                  {hostUser.displayName || hostUser.email || hostUser.uid}
+                </strong>
+              </span>
             ) : (
-              <span>Create, manage and host interactive live quizzes</span>
+              <span>Sign in with Google to save your quizzes and host live games</span>
             )}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {!hostUser && (
+          {!hostUser ? (
             <button
               onClick={handleHostLogin}
-              className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-white font-bold text-sm transition-all flex items-center gap-2 border border-slate-300 dark:border-slate-700"
+              className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-md transition-all active:scale-95 flex items-center gap-2"
             >
-              <LogIn className="w-4 h-4 text-amber-500" />
-              <span>{t('hostLogin')}</span>
+              <LogIn className="w-4 h-4 text-yellow-300" />
+              <span>{t('hostLogin')} (Google)</span>
             </button>
+          ) : (
+            <>
+              <Link
+                to="/host/import"
+                className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm shadow-md transition-all active:scale-95 flex items-center gap-2"
+              >
+                <Sparkles className="w-4 h-4 text-yellow-300" />
+                <span>{t('importAIQuiz')}</span>
+              </Link>
+
+              <Link
+                to="/host/quiz/new"
+                className="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-sm shadow-md transition-all active:scale-95 flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                <span>{t('createNewQuiz')}</span>
+              </Link>
+            </>
           )}
-
-          <Link
-            to="/host/import"
-            className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm shadow-md transition-all active:scale-95 flex items-center gap-2"
-          >
-            <Sparkles className="w-4 h-4 text-yellow-300" />
-            <span>{t('importAIQuiz')}</span>
-          </Link>
-
-          <Link
-            to="/host/quiz/new"
-            className="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-sm shadow-md transition-all active:scale-95 flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            <span>{t('createNewQuiz')}</span>
-          </Link>
         </div>
       </div>
 
@@ -241,11 +277,52 @@ export const HostDashboard: React.FC = () => {
               {quizzes.length}
             </span>
           </h2>
+
+          <button
+            onClick={loadQuizzes}
+            disabled={loading}
+            className="p-2 text-slate-500 hover:text-slate-900 dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            title="Refresh"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
         </div>
 
+        {loadError && (
+          <div className="mb-6 p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-rose-700 dark:text-rose-400 text-sm">
+            <div className="flex items-center gap-2.5">
+              <AlertCircle className="w-5 h-5 shrink-0" />
+              <span>{loadError}</span>
+            </div>
+            <button
+              onClick={loadQuizzes}
+              className="px-3 py-1.5 rounded-xl bg-rose-600 text-white font-bold text-xs hover:bg-rose-500 transition-colors shrink-0"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
         {loading ? (
-          <div className="py-12 text-center text-slate-400">
-            {t('loading')}
+          <div className="py-16 text-center text-slate-400 flex flex-col items-center justify-center gap-3">
+            <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+            <span className="text-sm font-semibold">{t('loading')}</span>
+          </div>
+        ) : !hostUser ? (
+          <div className="bg-white/50 dark:bg-slate-900/40 rounded-3xl border border-slate-200 dark:border-slate-800 p-8 sm:p-12 text-center">
+            <LogIn className="w-12 h-12 text-amber-500 mx-auto mb-3" />
+            <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-1">
+              Sign In to Access Your Quizzes
+            </h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto mb-6">
+              Authenticate with Google to create and host your quizzes, or try one of the ready-to-play sample quizzes below.
+            </p>
+            <button
+              onClick={handleHostLogin}
+              className="px-6 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black text-sm shadow-md transition-all"
+            >
+              Sign In with Google
+            </button>
           </div>
         ) : quizzes.length === 0 ? (
           <div className="bg-white/50 dark:bg-slate-900/40 rounded-3xl border border-dashed border-slate-300 dark:border-slate-800 p-8 sm:p-12 text-center">
@@ -282,7 +359,9 @@ export const HostDashboard: React.FC = () => {
                   <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-2 font-semibold">
                     <span className="flex items-center gap-1">
                       <Layers className="w-3.5 h-3.5 text-blue-500" />
-                      <span>{quiz.questions.length} {t('questionsCount')}</span>
+                      <span>
+                        {quiz.questions.length} {t('questionsCount')}
+                      </span>
                     </span>
                     <span className="flex items-center gap-1">
                       <Clock className="w-3.5 h-3.5" />
@@ -305,8 +384,14 @@ export const HostDashboard: React.FC = () => {
                       disabled={startingGameId === quiz.id}
                       className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-50"
                     >
-                      <Play className="w-4 h-4 fill-white" />
-                      <span>{startingGameId === quiz.id ? t('loading') : t('startLiveGame')}</span>
+                      {startingGameId === quiz.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Play className="w-4 h-4 fill-white" />
+                      )}
+                      <span>
+                        {startingGameId === quiz.id ? t('loading') : t('startLiveGame')}
+                      </span>
                     </button>
 
                     <Link
@@ -376,18 +461,21 @@ export const HostDashboard: React.FC = () => {
               <div className="flex items-center gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   onClick={() => handleStartGame(preset)}
-                  className="flex-1 py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-1.5"
+                  disabled={startingGameId === preset.id}
+                  className="flex-1 py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
                 >
                   <Play className="w-3.5 h-3.5 fill-white" />
                   <span>{t('startLiveGame')}</span>
                 </button>
-                <button
-                  onClick={() => handleClonePreset(preset)}
-                  className="py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-colors flex items-center gap-1"
-                >
-                  <Copy className="w-3.5 h-3.5" />
-                  <span>{t('clonePreset')}</span>
-                </button>
+                {hostUser && (
+                  <button
+                    onClick={() => handleClonePreset(preset)}
+                    className="py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-colors flex items-center gap-1"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>{t('clonePreset')}</span>
+                  </button>
+                )}
               </div>
             </div>
           ))}
