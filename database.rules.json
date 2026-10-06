@@ -1,0 +1,52 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        ".write": "auth != null && auth.uid == $uid",
+        "quizzes": {
+          "$quizId": {
+            ".validate": "newData.hasChildren(['id', 'title', 'questions'])"
+          }
+        }
+      }
+    },
+    "games": {
+      "$pin": {
+        "meta": {
+          ".read": true,
+          ".write": "auth != null && (!data.exists() || data.child('hostUid').val() == auth.uid)",
+          ".validate": "newData.hasChildren(['pin', 'hostUid', 'status'])"
+        },
+        "questions": {
+          ".read": true,
+          ".write": "auth != null && root.child('games').child($pin).child('meta/hostUid').val() == auth.uid"
+        },
+        "secret": {
+          ".read": "auth != null && root.child('games').child($pin).child('meta/hostUid').val() == auth.uid",
+          ".write": "auth != null && root.child('games').child($pin).child('meta/hostUid').val() == auth.uid"
+        },
+        "players": {
+          ".read": true,
+          "$uid": {
+            ".write": "auth != null && (auth.uid == $uid || root.child('games').child($pin).child('meta/hostUid').val() == auth.uid)",
+            ".validate": "newData.hasChildren(['firstName', 'lastName'])"
+          }
+        },
+        "answers": {
+          "$questionIndex": {
+            ".read": "auth != null && root.child('games').child($pin).child('meta/hostUid').val() == auth.uid",
+            "$uid": {
+              ".write": "auth != null && auth.uid == $uid && !data.exists()",
+              ".validate": "newData.hasChildren(['choice', 'timeMs'])"
+            }
+          }
+        },
+        "results": {
+          ".read": true,
+          ".write": "auth != null && root.child('games').child($pin).child('meta/hostUid').val() == auth.uid"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "Ilmhub Kahoot - Live Quiz Platform",
+  "short_name": "Ilmhub Kahoot",
+  "description": "Live interactive quizzes for teachers and learners with real-time sync and AI generation.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B1B4D",
+  "theme_color": "#0B1B4D",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='40' fill='%2312266B'/%3E%3Cpath d='M38 126 C38 67 154 67 154 126 C134 126 115 138 96 150 C77 138 58 126 38 126 Z' stroke='%23FFF' stroke-width='20' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M42 138 Q69 128 96 150 Q123 128 150 138' stroke='%23FFF' stroke-width='16' fill='none' stroke-linecap='round'/%3E%3Cpath d='M96 68 Q96 92 112 92 Q96 92 96 116 Q96 92 80 92 Q96 92 96 68 Z' fill='%23FFC107'/%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='100' fill='%2312266B'/%3E%3Cpath d='M100 338 C100 180 412 180 412 338 C360 338 308 370 256 400 C204 370 152 338 100 338 Z' stroke='%23FFF' stroke-width='50' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M110 370 Q183 345 256 400 Q329 345 402 370' stroke='%23FFF' stroke-width='40' fill='none' stroke-linecap='round'/%3E%3Cpath d='M256 182 Q256 246 298 246 Q256 246 256 310 Q256 246 214 246 Q256 246 256 182 Z' fill='%23FFC107'/%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

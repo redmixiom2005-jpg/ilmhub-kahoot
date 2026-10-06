@@ -1,0 +1,6 @@
+{
+  "name": "Ilmhub Kahoot - Live Quiz Platform",
+  "description": "Interactive real-time Kahoot-style quiz game platform with host projector, live player controls, AI quiz generator, and podium celebrations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
