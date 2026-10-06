@@ -39,12 +39,14 @@ import {
   X,
   Volume2,
   VolumeX,
-  ArrowUp,
-  ArrowDown,
-  Minus,
   Sparkles,
   StopCircle,
   Smartphone,
+  Copy,
+  Share2,
+  Check,
+  Flame,
+  ArrowRight,
 } from 'lucide-react';
 
 export const LiveHostGamePage: React.FC = () => {
@@ -64,14 +66,20 @@ export const LiveHostGamePage: React.FC = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number>(20);
   const [countdownNum, setCountdownNum] = useState<number>(3);
+  const [copiedPin, setCopiedPin] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const joinUrl = `${window.location.origin}/join/${pin}`;
 
-  // Generate QR Code on mount
+  // Generate QR Code on mount with brand colors
   useEffect(() => {
     if (pin) {
-      QRCode.toDataURL(joinUrl, { width: 320, margin: 2, color: { dark: '#0B1B4D', light: '#FFFFFF' } })
+      QRCode.toDataURL(joinUrl, {
+        width: 360,
+        margin: 2,
+        color: { dark: '#071A3D', light: '#FFFFFF' },
+      })
         .then((url) => setQrCodeDataUrl(url))
         .catch(() => {});
     }
@@ -117,7 +125,6 @@ export const LiveHostGamePage: React.FC = () => {
         setCountdownNum((prev) => {
           if (prev <= 1) {
             clearInterval(cdInterval);
-            // Transition to question phase
             if (pin && currentQuestion) {
               const now = Date.now();
               const endsAt = now + currentQuestion.timeLimit * 1000;
@@ -161,7 +168,7 @@ export const LiveHostGamePage: React.FC = () => {
     }
   }, [gameMeta?.status, gameMeta?.currentIndex, currentQuestion]);
 
-  // Auto-end question if ALL players have answered!
+  // Auto-end question if ALL players answered
   useEffect(() => {
     if (gameMeta?.status === 'question') {
       const totalPlayerCount = Object.keys(players).length;
@@ -264,7 +271,7 @@ export const LiveHostGamePage: React.FC = () => {
       await updateGameStatus(pin, 'finished');
       sound.playWin();
       try {
-        confetti({ particleCount: 150, spread: 90, origin: { y: 0.5 } });
+        confetti({ particleCount: 160, spread: 100, origin: { y: 0.5 } });
       } catch {}
     } else {
       // Next Question Countdown
@@ -289,7 +296,42 @@ export const LiveHostGamePage: React.FC = () => {
     }
   };
 
-  // Keyboard Shortcuts: Space = Next / Start, S = Skip
+  const handleCopyPin = () => {
+    if (!pin) return;
+    navigator.clipboard.writeText(pin);
+    setCopiedPin(true);
+    showToast(t('toastPinCopied'));
+    setTimeout(() => setCopiedPin(false), 2000);
+  };
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(joinUrl);
+    setCopiedLink(true);
+    showToast(t('copied'));
+    setTimeout(() => setCopiedLink(false), 2000);
+  };
+
+  const handleShare = () => {
+    if (navigator.share) {
+      navigator.share({
+        title: 'ILMHUB KAHOOT',
+        text: `Join the live game with PIN: ${pin}`,
+        url: joinUrl,
+      }).catch(() => {});
+    } else {
+      handleCopyLink();
+    }
+  };
+
+  const handleDownloadQr = () => {
+    if (!qrCodeDataUrl) return;
+    const a = document.createElement('a');
+    a.href = qrCodeDataUrl;
+    a.download = `ilmhub-game-${pin}-qr.png`;
+    a.click();
+  };
+
+  // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space') {
@@ -311,7 +353,7 @@ export const LiveHostGamePage: React.FC = () => {
         rank: idx + 1,
         fullName: `${p.firstName} ${p.lastName}`,
         score: p.score,
-        correctCount: Math.round(p.score / 800), // Approximate estimation for summary
+        correctCount: Math.round(p.score / 800),
         avgTimeMs: p.lastResponseTimeMs || 2500,
       }));
 
@@ -329,38 +371,69 @@ export const LiveHostGamePage: React.FC = () => {
     await updateGameStatus(pin, gameMeta.status, { showQuestionOnPlayers: nextVal });
   };
 
-  // 1. LOBBY VIEW (PROJECTOR)
+  // Format PIN visually: "728 491"
+  const formattedPin = pin && pin.length === 6 ? `${pin.slice(0, 3)} ${pin.slice(3, 6)}` : pin;
+
+  // Avatar background colors
+  const avatarBgColors = [
+    'from-blue-600 to-indigo-700',
+    'from-amber-500 to-yellow-600',
+    'from-emerald-600 to-teal-700',
+    'from-rose-600 to-pink-700',
+    'from-purple-600 to-violet-800',
+    'from-cyan-600 to-blue-700',
+  ];
+
+  // ==========================================
+  // 1. PROJECTOR LOBBY VIEW
+  // ==========================================
   if (!gameMeta || gameMeta.status === 'lobby') {
     return (
-      <div className="min-h-[100dvh] flex flex-col justify-between p-6 sm:p-10 bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white select-none">
-        {/* Top Bar with Join Info */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white/10 backdrop-blur-xl p-6 rounded-3xl border border-white/10 shadow-2xl">
+      <div className="min-h-[100dvh] flex flex-col justify-between p-6 sm:p-10 bg-[#050B18] text-white select-none">
+        {/* Top Bar with Projector Header */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-[#0B1730]/90 backdrop-blur-xl p-6 rounded-3xl border border-white/10 shadow-2xl">
           <div className="flex items-center gap-4">
-            <Logo size="lg" />
+            <Logo size="lg" showTagline={false} />
             <div>
-              <span className="text-xs uppercase tracking-widest text-slate-300 font-bold block">
+              <span className="text-xs uppercase tracking-widest text-[#FFC928] font-black block">
                 {t('joinAt')}
               </span>
-              <span className="text-xl sm:text-2xl font-black text-yellow-400">
-                {window.location.host}/join/{pin}
+              <span className="text-xl sm:text-2xl font-black text-white">
+                {window.location.host}/join
               </span>
             </div>
           </div>
 
+          {/* Huge Projector-Friendly PIN */}
           <div className="text-center sm:text-right">
-            <span className="text-xs uppercase tracking-widest text-slate-300 font-bold block">
-              {t('gamePin')}
-            </span>
-            <span className="text-5xl sm:text-6xl font-black tracking-widest text-white drop-shadow-md">
-              {pin}
-            </span>
+            <div className="text-xs uppercase tracking-widest text-slate-400 font-bold mb-1">
+              {t('gamePinLabel')}
+            </div>
+            <div className="flex items-center justify-center sm:justify-end gap-3">
+              <span
+                style={{ fontSize: 'clamp(44px, 7vw, 100px)' }}
+                className="font-black tracking-[0.2em] text-[#FFC928] drop-shadow-lg leading-none"
+              >
+                {formattedPin}
+              </span>
+              <button
+                onClick={handleCopyPin}
+                title={t('copyPin')}
+                className="p-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white transition-all active:scale-95 shrink-0"
+              >
+                {copiedPin ? <Check className="w-5 h-5 text-emerald-400" /> : <Copy className="w-5 h-5" />}
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Center: QR Code & Live Player Pop-in List */}
-        <div className="my-8 flex flex-col lg:flex-row items-center justify-center gap-10 max-w-6xl mx-auto w-full">
-          {/* Huge QR Code Card */}
-          <div className="bg-white p-5 rounded-3xl shadow-2xl flex flex-col items-center shrink-0">
+        {/* Center: QR Card & Live Player Grid */}
+        <div className="my-8 flex flex-col lg:flex-row items-center justify-center gap-8 max-w-7xl mx-auto w-full">
+          {/* SCAN TO JOIN QR Card */}
+          <div className="bg-white text-slate-900 p-6 rounded-3xl shadow-2xl flex flex-col items-center shrink-0 border-4 border-[#0757D9]">
+            <div className="text-xs font-black uppercase tracking-widest text-[#0757D9] mb-3">
+              {t('scanToJoin')}
+            </div>
             {qrCodeDataUrl ? (
               <img
                 src={qrCodeDataUrl}
@@ -368,63 +441,116 @@ export const LiveHostGamePage: React.FC = () => {
                 className="w-56 h-56 sm:w-64 sm:h-64 rounded-2xl"
               />
             ) : (
-              <div className="w-64 h-64 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400">
+              <div className="w-64 h-64 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400 font-bold">
                 Loading QR...
               </div>
             )}
-            <span className="text-slate-900 font-bold text-xs mt-3 flex items-center gap-1.5">
-              <Sparkles className="w-4 h-4 text-amber-500" />
-              <span>{t('scanQrCode')}</span>
-            </span>
+            <div className="text-sm font-black text-[#071A3D] mt-3">
+              or enter: <span className="text-[#0757D9]">{formattedPin}</span>
+            </div>
+
+            {/* QR Action Buttons: Copy Link, Share, Download QR */}
+            <div className="flex items-center gap-2 mt-4 pt-3 border-t border-slate-100 w-full justify-center">
+              <button
+                onClick={handleCopyLink}
+                title={t('copyLink')}
+                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 flex items-center gap-1.5 transition-colors"
+              >
+                {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{t('copyLink')}</span>
+              </button>
+              <button
+                onClick={handleShare}
+                title={t('sharePin')}
+                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 flex items-center gap-1.5 transition-colors"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>{t('sharePin')}</span>
+              </button>
+              <button
+                onClick={handleDownloadQr}
+                title={t('downloadQr')}
+                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 flex items-center gap-1.5 transition-colors"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>QR</span>
+              </button>
+            </div>
           </div>
 
           {/* Players in Lobby Grid */}
-          <div className="flex-1 w-full bg-black/20 backdrop-blur-md rounded-3xl p-6 border border-white/10 min-h-[300px] flex flex-col justify-between">
+          <div className="flex-1 w-full bg-[#0B1730]/80 backdrop-blur-md rounded-3xl p-6 sm:p-8 border border-white/10 min-h-[380px] flex flex-col justify-between shadow-2xl">
             <div className="flex items-center justify-between pb-4 border-b border-white/10 mb-4">
-              <div className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-yellow-400" />
-                <span className="font-bold text-base">{t('playersInLobby')}</span>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-[#0757D9]/20 text-[#0757D9] dark:text-[#FFC928] flex items-center justify-center">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-lg text-white">
+                    {t('playersJoining')}
+                  </h3>
+                  <span className="text-xs text-slate-400">
+                    Live classroom roster
+                  </span>
+                </div>
               </div>
-              <span className="px-3.5 py-1 rounded-full bg-yellow-400 text-slate-950 font-black text-sm">
-                {playerList.length}
-              </span>
+
+              {/* Animated Player Counter */}
+              <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-[#FFC928] text-[#071A3D] font-black text-base shadow-lg animate-pulse">
+                <span>{playerList.length}</span>
+                <span>{t('playersCount')}</span>
+              </div>
             </div>
 
             {playerList.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-slate-400 text-center p-6">
-                <Users className="w-12 h-12 mb-3 opacity-30 animate-pulse" />
-                <p className="text-sm font-semibold">{t('noPlayersYet')}</p>
+              <div className="flex-1 flex flex-col items-center justify-center text-slate-400 text-center p-8">
+                <Users className="w-16 h-16 mb-4 opacity-25 animate-pulse text-[#FFC928]" />
+                <p className="text-base font-bold text-slate-300">
+                  {t('noPlayersYet')}
+                </p>
+                <span className="text-xs text-slate-500 mt-1">
+                  Students join from their phones using the PIN above
+                </span>
               </div>
             ) : (
-              <div className="flex flex-wrap gap-2.5 max-h-72 overflow-y-auto pr-1 content-start">
-                {playerList.map((p) => (
-                  <div
-                    key={p.uid}
-                    className="group relative px-4 py-2 rounded-2xl bg-white/15 hover:bg-rose-500/20 backdrop-blur-md text-white font-bold text-sm border border-white/20 transition-all flex items-center gap-2 animate-in zoom-in-95 duration-200"
-                  >
-                    <span>{p.firstName} {p.lastName}</span>
-                    <button
-                      onClick={() => handleKickPlayer(p.uid)}
-                      title={t('kickPlayer')}
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded-full bg-rose-600 text-white hover:bg-rose-700 transition-opacity"
+              <div className="flex flex-wrap gap-3 max-h-72 overflow-y-auto pr-1 content-start">
+                {playerList.map((p, idx) => {
+                  const gradient = avatarBgColors[idx % avatarBgColors.length];
+                  return (
+                    <div
+                      key={p.uid}
+                      className="group relative px-4 py-2.5 rounded-2xl bg-[#102044] hover:bg-rose-950/40 border border-white/10 transition-all flex items-center gap-3 animate-in zoom-in-95 duration-200 shadow-sm"
                     >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
+                      {/* Avatar circle */}
+                      <div className={`w-8 h-8 rounded-full bg-gradient-to-tr ${gradient} flex items-center justify-center font-black text-xs text-white shadow-xs shrink-0`}>
+                        {p.firstName[0]}
+                      </div>
+                      <span className="font-bold text-sm text-white">
+                        {p.firstName} {p.lastName}
+                      </span>
+                      <button
+                        onClick={() => handleKickPlayer(p.uid)}
+                        title={t('kickPlayer')}
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded-full bg-rose-600 text-white hover:bg-rose-700 transition-opacity ml-1"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
             <div className="pt-4 text-xs text-slate-400 text-center font-medium">
-              Tip: Press Space to start game when players have joined
+              Tip: Press Spacebar on keyboard to start the game
             </div>
           </div>
         </div>
 
         {/* Lobby Setting: Show question on player devices */}
-        <div className="max-w-6xl mx-auto w-full bg-white/10 backdrop-blur-md px-5 py-3 rounded-2xl border border-white/15 flex items-center justify-between gap-4 mb-4">
+        <div className="max-w-7xl mx-auto w-full bg-[#0B1730]/90 backdrop-blur-md px-6 py-3.5 rounded-2xl border border-white/10 flex items-center justify-between gap-4 mb-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-amber-400/20 text-yellow-300 shrink-0">
+            <div className="p-2 rounded-xl bg-[#0757D9]/20 text-[#FFC928] shrink-0">
               <Smartphone className="w-5 h-5" />
             </div>
             <div>
@@ -432,7 +558,7 @@ export const LiveHostGamePage: React.FC = () => {
                 {t('showQuestionOnPlayers')}
               </span>
               <span className="text-xs text-slate-300 hidden sm:inline">
-                Display question text, media, and choices directly on students' screens
+                Display question text and options on students' phone screens
               </span>
             </div>
           </div>
@@ -441,13 +567,13 @@ export const LiveHostGamePage: React.FC = () => {
             type="button"
             onClick={handleToggleShowQuestionOnPlayers}
             className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-              showQuestionOnPlayers ? 'bg-amber-400' : 'bg-slate-700'
+              showQuestionOnPlayers ? 'bg-[#FFC928]' : 'bg-slate-700'
             }`}
             role="switch"
             aria-checked={showQuestionOnPlayers}
           >
             <span
-              className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-slate-950 shadow-md transition duration-200 ease-in-out ${
+              className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-[#071A3D] shadow-md transition duration-200 ease-in-out ${
                 showQuestionOnPlayers ? 'translate-x-5' : 'translate-x-0'
               }`}
             />
@@ -455,10 +581,10 @@ export const LiveHostGamePage: React.FC = () => {
         </div>
 
         {/* Bottom Controls */}
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center justify-between gap-4 max-w-7xl mx-auto w-full">
           <button
             onClick={handleToggleFullscreen}
-            className="p-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white transition-colors"
+            className="p-3.5 rounded-2xl bg-white/10 hover:bg-white/20 text-white transition-colors"
             title="Fullscreen"
           >
             {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
@@ -467,9 +593,9 @@ export const LiveHostGamePage: React.FC = () => {
           <button
             onClick={handleStartCountdown}
             disabled={playerList.length === 0}
-            className="py-4 px-10 rounded-2xl bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black text-xl shadow-xl transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none flex items-center gap-3"
+            className="py-4 px-10 rounded-2xl bg-gradient-to-r from-[#FFC928] to-[#FFD43B] hover:brightness-105 text-[#071A3D] font-black text-xl shadow-2xl transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none flex items-center gap-3 cursor-pointer"
           >
-            <Play className="w-6 h-6 fill-slate-950" />
+            <Play className="w-6 h-6 fill-[#071A3D]" />
             <span>{t('startGame')} ({playerList.length})</span>
           </button>
         </div>
@@ -477,48 +603,57 @@ export const LiveHostGamePage: React.FC = () => {
     );
   }
 
+  // ==========================================
   // 2. COUNTDOWN VIEW
+  // ==========================================
   if (gameMeta.status === 'countdown') {
     return (
-      <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-slate-950 text-white">
-        <span className="text-2xl uppercase tracking-widest text-slate-400 mb-6 font-bold">
+      <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-[#050B18] text-white">
+        <span className="text-2xl uppercase tracking-widest text-[#FFC928] mb-6 font-black">
           {t('getReadyTitle')}
         </span>
-        <div className="w-48 h-48 rounded-full bg-yellow-400 text-slate-950 flex items-center justify-center text-8xl font-black shadow-2xl animate-ping duration-1000">
+        <div className="w-48 h-48 rounded-full bg-[#FFC928] text-[#071A3D] flex items-center justify-center text-8xl font-black shadow-2xl animate-ping duration-1000">
           {countdownNum}
         </div>
       </div>
     );
   }
 
+  // ==========================================
   // 3. LIVE QUESTION VIEW (PROJECTOR)
+  // ==========================================
   if (gameMeta.status === 'question' && currentQuestion) {
     const answeredCount = Object.keys(answers).length;
     const totalCount = playerList.length;
     const isTrueFalse = currentQuestion.type === 'truefalse';
 
     return (
-      <div className="min-h-[100dvh] flex flex-col justify-between p-6 sm:p-8 bg-slate-950 text-white select-none">
+      <div className="min-h-[100dvh] flex flex-col justify-between p-6 sm:p-8 bg-[#050B18] text-white select-none">
         {/* Top Header: Question Counter & Timer & Controls */}
         <div className="flex items-center justify-between gap-4 mb-4">
-          <span className="px-4 py-1.5 rounded-full bg-white/10 font-bold text-sm text-yellow-400">
-            {currentQuestion.questionNumber} / {currentQuestion.totalQuestions}
-          </span>
-
-          {/* Animated Timer Pill */}
-          <div className="flex items-center gap-3 bg-white/10 px-6 py-2 rounded-full border border-white/15">
-            <span className={`text-4xl font-black tabular-nums ${timeLeft <= 5 ? 'text-rose-500 animate-pulse' : 'text-white'}`}>
-              {timeLeft}
+          <div className="flex items-center gap-3">
+            <span className="px-5 py-2 rounded-2xl bg-[#0B1730] border border-white/10 font-black text-base text-[#FFC928]">
+              {t('questionLabel')} {currentQuestion.questionNumber} / {currentQuestion.totalQuestions}
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="px-4 py-1.5 rounded-full bg-white/10 font-bold text-sm text-slate-300">
+          {/* Premium Circular/Pill Countdown Timer */}
+          <div className="flex items-center gap-3 bg-[#0B1730] px-7 py-2.5 rounded-full border border-white/15 shadow-xl">
+            <span className={`text-4xl sm:text-5xl font-black tabular-nums ${timeLeft <= 5 ? 'text-amber-400 animate-pulse' : 'text-white'}`}>
+              {timeLeft < 10 ? `0${timeLeft}` : timeLeft}
+            </span>
+            <span className="text-xs uppercase tracking-widest text-slate-400 font-bold">
+              {t('secShort')}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="px-4 py-2 rounded-2xl bg-[#0B1730] border border-white/10 font-bold text-sm text-slate-300">
               {answeredCount} / {totalCount} {t('answeredCounter')}
             </span>
             <button
               onClick={handleEndQuestionNow}
-              className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-md transition-all flex items-center gap-1.5"
+              className="px-4 py-2.5 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-md transition-all flex items-center gap-1.5"
             >
               <StopCircle className="w-4 h-4" />
               <span>{t('endQuestionNow')}</span>
@@ -526,9 +661,12 @@ export const LiveHostGamePage: React.FC = () => {
           </div>
         </div>
 
-        {/* Center: Big Question Card */}
-        <div className="flex-1 flex flex-col items-center justify-center my-4 max-w-5xl mx-auto w-full text-center">
-          <h2 className="text-3xl sm:text-5xl font-black leading-tight tracking-tight px-4 mb-6">
+        {/* Center: Big Question Card for Projector */}
+        <div className="flex-1 flex flex-col items-center justify-center my-6 max-w-5xl mx-auto w-full text-center">
+          <h2
+            style={{ fontSize: 'clamp(28px, 4.5vw, 56px)' }}
+            className="font-black leading-tight tracking-tight px-4 mb-6 text-white"
+          >
             {currentQuestion.text}
           </h2>
 
@@ -536,23 +674,25 @@ export const LiveHostGamePage: React.FC = () => {
             <img
               src={currentQuestion.imageUrl}
               alt="Question illustration"
-              className="max-h-64 rounded-2xl object-contain shadow-2xl border border-white/10 mb-4"
+              className="max-h-64 rounded-3xl object-contain shadow-2xl border border-white/10 mb-4"
             />
           )}
         </div>
 
-        {/* Bottom Options Grid */}
-        <div className={`grid gap-4 w-full max-w-6xl mx-auto ${isTrueFalse ? 'grid-cols-2' : 'grid-cols-2'}`}>
+        {/* Bottom Options Grid with IlmHub Distinct Styles */}
+        <div className={`grid gap-4 sm:gap-6 w-full max-w-6xl mx-auto ${isTrueFalse ? 'grid-cols-2' : 'grid-cols-2'}`}>
           {isTrueFalse ? (
             <>
-              <div className="p-6 rounded-2xl bg-blue-600 text-white flex items-center gap-4 text-2xl font-black shadow-lg">
-                <div className="p-3 bg-white/20 rounded-xl">
+              {/* True: Royal Blue */}
+              <div className="p-6 sm:p-8 rounded-3xl bg-[#0757D9] text-white flex items-center gap-5 text-2xl sm:text-3xl font-black shadow-xl border-2 border-blue-400/30">
+                <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center shrink-0">
                   <svg className="w-8 h-8 fill-white" viewBox="0 0 24 24"><polygon points="12,2 22,12 12,22 2,12" /></svg>
                 </div>
                 <span>{t('trueOption')}</span>
               </div>
-              <div className="p-6 rounded-2xl bg-rose-600 text-white flex items-center gap-4 text-2xl font-black shadow-lg">
-                <div className="p-3 bg-white/20 rounded-xl">
+              {/* False: Rose/Red */}
+              <div className="p-6 sm:p-8 rounded-3xl bg-[#E11D48] text-white flex items-center gap-5 text-2xl sm:text-3xl font-black shadow-xl border-2 border-rose-400/30">
+                <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center shrink-0">
                   <svg className="w-8 h-8 fill-white" viewBox="0 0 24 24"><polygon points="12,3 22,21 2,21" /></svg>
                 </div>
                 <span>{t('falseOption')}</span>
@@ -560,7 +700,13 @@ export const LiveHostGamePage: React.FC = () => {
             </>
           ) : (
             currentQuestion.options.map((opt, idx) => {
-              const bgColors = ['bg-rose-600', 'bg-blue-600', 'bg-amber-500', 'bg-emerald-600'];
+              const bgColors = [
+                'bg-[#E11D48] border-rose-400/30', // A: Red Triangle
+                'bg-[#0757D9] border-blue-400/30', // B: Blue Diamond
+                'bg-[#D97706] border-amber-400/30', // C: Amber Circle
+                'bg-[#059669] border-emerald-400/30', // D: Emerald Square
+              ];
+              const letters = ['A', 'B', 'C', 'D'];
               const shapes = [
                 <polygon points="12,3 22,21 2,21" />,
                 <polygon points="12,2 22,12 12,22 2,12" />,
@@ -571,12 +717,13 @@ export const LiveHostGamePage: React.FC = () => {
               return (
                 <div
                   key={idx}
-                  className={`p-5 rounded-2xl ${bgColors[idx]} text-white flex items-center gap-4 text-xl sm:text-2xl font-black shadow-lg`}
+                  className={`p-5 sm:p-7 rounded-3xl ${bgColors[idx]} text-white flex items-center gap-4 text-xl sm:text-2xl font-black shadow-xl border-2`}
                 >
-                  <div className="p-2.5 bg-white/20 rounded-xl shrink-0">
-                    <svg className="w-7 h-7 fill-white" viewBox="0 0 24 24">
+                  <div className="w-11 h-11 bg-black/20 rounded-2xl flex items-center justify-center shrink-0 text-base font-black">
+                    <svg className="w-6 h-6 fill-white mr-1.5" viewBox="0 0 24 24">
                       {shapes[idx]}
                     </svg>
+                    <span>{letters[idx]}</span>
                   </div>
                   <span className="truncate">{opt}</span>
                 </div>
@@ -588,81 +735,93 @@ export const LiveHostGamePage: React.FC = () => {
     );
   }
 
-  // 4. REVEAL VIEW (BAR CHART OF ANSWERS & CORRECT HIGHLIGHT)
+  // ==========================================
+  // 4. REVEAL VIEW (RESPONSE BAR CHART & LIVE RANKINGS)
+  // ==========================================
   if (gameMeta.status === 'reveal' && currentQuestion && currentResult) {
-    const isTrueFalse = currentQuestion.type === 'truefalse';
     const totalAnswers = currentResult.totalAnswered || 1;
 
     return (
-      <div className="min-h-[100dvh] flex flex-col justify-between p-6 sm:p-8 bg-slate-950 text-white select-none">
+      <div className="min-h-[100dvh] flex flex-col justify-between p-6 sm:p-8 bg-[#050B18] text-white select-none">
         {/* Top Bar */}
         <div className="flex items-center justify-between gap-4">
-          <span className="text-xl font-black text-yellow-400">
-            {t('roundResults')}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-xl sm:text-2xl font-black text-[#FFC928]">
+              {t('roundResults')}
+            </span>
+          </div>
 
           <button
             onClick={handleNextQuestion}
-            className="py-3 px-8 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-base shadow-xl transition-all active:scale-95 flex items-center gap-2"
+            className="py-3 px-8 rounded-2xl bg-gradient-to-r from-[#FFC928] to-[#FFD43B] text-[#071A3D] font-black text-base shadow-xl transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
           >
             <span>{t('nextQuestion')}</span>
-            <SkipForward className="w-5 h-5 fill-slate-950" />
+            <SkipForward className="w-5 h-5 fill-[#071A3D]" />
           </button>
         </div>
 
         {/* Center: Animated Bar Chart of Distribution */}
-        <div className="my-8 max-w-4xl mx-auto w-full">
-          <h3 className="text-2xl sm:text-3xl font-extrabold text-center mb-10">
+        <div className="my-8 max-w-5xl mx-auto w-full">
+          <h3 className="text-2xl sm:text-3xl font-black text-center mb-10 text-white">
             {currentQuestion.text}
           </h3>
 
-          <div className="grid grid-cols-4 gap-4 sm:gap-6 items-end h-64 sm:h-80 bg-white/5 p-6 rounded-3xl border border-white/10">
+          <div className="grid grid-cols-4 gap-4 sm:gap-6 items-end h-64 sm:h-80 bg-[#0B1730] p-6 sm:p-8 rounded-3xl border border-white/10 shadow-2xl">
             {currentQuestion.options.map((opt, idx) => {
               const count = currentResult.distribution[idx] || 0;
               const heightPercent = totalAnswers > 0 ? Math.round((count / totalAnswers) * 100) : 0;
               const isCorrect = currentResult.correctAnswers.includes(idx);
-              const barColors = ['bg-rose-600', 'bg-blue-600', 'bg-amber-500', 'bg-emerald-600'];
+              const barColors = ['bg-[#E11D48]', 'bg-[#0757D9]', 'bg-[#D97706]', 'bg-[#059669]'];
+              const letters = ['A', 'B', 'C', 'D'];
 
               return (
                 <div key={idx} className="flex flex-col items-center h-full justify-end">
-                  <span className="text-lg font-black mb-2 text-white">
+                  <span className="text-xl font-black mb-2 text-white">
                     {count}
                   </span>
                   <div
-                    style={{ height: `${Math.max(12, heightPercent)}%` }}
+                    style={{ height: `${Math.max(14, heightPercent)}%` }}
                     className={`w-full rounded-2xl ${barColors[idx]} transition-all duration-700 relative flex items-center justify-center shadow-lg ${
-                      isCorrect ? 'ring-4 ring-yellow-400' : 'opacity-70'
+                      isCorrect ? 'ring-4 ring-[#FFC928]' : 'opacity-65'
                     }`}
                   >
                     {isCorrect && (
-                      <CheckCircle className="w-6 h-6 text-yellow-300 fill-slate-950" />
+                      <CheckCircle className="w-7 h-7 text-[#FFC928] fill-[#071A3D]" />
                     )}
                   </div>
-                  <span className="text-xs sm:text-sm font-bold truncate max-w-full text-slate-300 mt-3">
-                    {opt}
-                  </span>
+                  <div className="flex items-center gap-1.5 mt-3 text-xs sm:text-sm font-bold truncate max-w-full text-slate-300">
+                    <span className="w-5 h-5 rounded-md bg-white/15 flex items-center justify-center text-[11px] font-black shrink-0">
+                      {letters[idx]}
+                    </span>
+                    <span className="truncate">{opt}</span>
+                  </div>
                 </div>
               );
             })}
           </div>
         </div>
 
-        {/* Bottom Leaderboard Preview */}
-        <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 max-w-2xl mx-auto w-full flex items-center justify-between text-xs sm:text-sm">
-          <span className="font-bold text-slate-300">Top Player:</span>
-          {leaderboard[0] ? (
-            <span className="font-black text-yellow-400 text-base">
-              🥇 {leaderboard[0].firstName} {leaderboard[0].lastName} ({leaderboard[0].score} pts)
-            </span>
-          ) : (
-            <span>No players scored</span>
-          )}
+        {/* Bottom Top Players Mini-Leaderboard */}
+        <div className="bg-[#0B1730] backdrop-blur-md rounded-2xl p-4 sm:p-5 max-w-3xl mx-auto w-full border border-white/10 flex items-center justify-between text-xs sm:text-sm shadow-xl">
+          <span className="font-bold text-slate-400 flex items-center gap-1.5">
+            <Trophy className="w-4 h-4 text-[#FFC928]" />
+            <span>Top Ranks:</span>
+          </span>
+          <div className="flex items-center gap-4">
+            {leaderboard.slice(0, 3).map((entry, idx) => (
+              <span key={entry.uid} className="font-extrabold text-white">
+                {idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉'} {entry.firstName} ({entry.score} pts)
+              </span>
+            ))}
+          </div>
         </div>
       </div>
     );
   }
 
-  // 5. FINAL PODIUM VIEW (CONFETTI, 1st 2nd 3rd, CSV EXPORT)
+  // ==========================================
+  // 5. FINAL PODIUM VIEW
+  // ==========================================
   if (gameMeta.status === 'finished') {
     const sortedFinal = Object.values(players).sort((a, b) => b.score - a.score);
     const first = sortedFinal[0];
@@ -670,34 +829,34 @@ export const LiveHostGamePage: React.FC = () => {
     const third = sortedFinal[2];
 
     return (
-      <div className="min-h-[100dvh] flex flex-col justify-between p-6 sm:p-10 bg-gradient-to-b from-blue-950 via-slate-950 to-indigo-950 text-white select-none">
+      <div className="min-h-[100dvh] flex flex-col justify-between p-6 sm:p-10 bg-gradient-to-b from-[#071A3D] via-[#050B18] to-[#071A3D] text-white select-none">
         <div className="flex items-center justify-between">
-          <Logo size="md" />
-          <h1 className="text-3xl font-black text-yellow-400">
+          <Logo size="md" showTagline={false} />
+          <h1 className="text-3xl sm:text-4xl font-black text-[#FFC928]">
             {t('podiumTitle')}
           </h1>
           <button
             onClick={handleExportCsv}
-            className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs flex items-center gap-1.5"
+            className="px-4 py-2.5 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs flex items-center gap-2 border border-white/10"
           >
-            <Download className="w-4 h-4" />
+            <Download className="w-4 h-4 text-[#FFC928]" />
             <span>{t('exportResultsCsv')}</span>
           </button>
         </div>
 
         {/* Animated Podium Steps */}
-        <div className="my-10 flex items-end justify-center gap-4 sm:gap-6 max-w-4xl mx-auto w-full">
+        <div className="my-10 flex items-end justify-center gap-4 sm:gap-8 max-w-4xl mx-auto w-full">
           {/* 2nd Place */}
           {second && (
             <div className="flex flex-col items-center w-1/3">
-              <span className="text-sm font-bold text-slate-300 mb-1 truncate max-w-full">
+              <span className="text-base font-bold text-slate-200 mb-1 truncate max-w-full">
                 {second.firstName} {second.lastName}
               </span>
-              <span className="text-xs font-black text-yellow-400 mb-2">
+              <span className="text-sm font-black text-[#FFC928] mb-2">
                 {second.score} pts
               </span>
-              <div className="w-full h-44 rounded-t-3xl bg-gradient-to-t from-slate-700 to-slate-500 shadow-2xl flex flex-col items-center justify-center p-4 border-t-4 border-slate-300">
-                <span className="text-4xl font-black text-white">2</span>
+              <div className="w-full h-48 rounded-t-3xl bg-gradient-to-t from-slate-700 to-slate-500 shadow-2xl flex flex-col items-center justify-center p-4 border-t-4 border-slate-300">
+                <span className="text-5xl font-black text-white">2</span>
                 <span className="text-xs font-bold uppercase mt-1 tracking-wider text-slate-200">
                   {t('secondPlace')}
                 </span>
@@ -708,15 +867,15 @@ export const LiveHostGamePage: React.FC = () => {
           {/* 1st Place (Champion) */}
           {first && (
             <div className="flex flex-col items-center w-1/3">
-              <Trophy className="w-12 h-12 text-yellow-400 mb-2 animate-bounce" />
-              <span className="text-base sm:text-lg font-black text-white mb-1 truncate max-w-full">
+              <Trophy className="w-16 h-16 text-[#FFC928] mb-2 animate-bounce" />
+              <span className="text-lg sm:text-xl font-black text-white mb-1 truncate max-w-full">
                 {first.firstName} {first.lastName}
               </span>
-              <span className="text-sm font-black text-yellow-400 mb-2">
+              <span className="text-base font-black text-[#FFC928] mb-2">
                 {first.score} pts
               </span>
-              <div className="w-full h-60 rounded-t-3xl bg-gradient-to-t from-amber-500 to-yellow-400 shadow-2xl flex flex-col items-center justify-center p-4 border-t-4 border-yellow-200 text-slate-950">
-                <span className="text-6xl font-black">1</span>
+              <div className="w-full h-64 rounded-t-3xl bg-gradient-to-t from-amber-500 to-[#FFC928] shadow-2xl flex flex-col items-center justify-center p-4 border-t-4 border-yellow-200 text-[#071A3D]">
+                <span className="text-7xl font-black">1</span>
                 <span className="text-sm font-black uppercase mt-1 tracking-wider">
                   {t('firstPlace')}
                 </span>
@@ -727,14 +886,14 @@ export const LiveHostGamePage: React.FC = () => {
           {/* 3rd Place */}
           {third && (
             <div className="flex flex-col items-center w-1/3">
-              <span className="text-sm font-bold text-slate-300 mb-1 truncate max-w-full">
+              <span className="text-base font-bold text-slate-200 mb-1 truncate max-w-full">
                 {third.firstName} {third.lastName}
               </span>
-              <span className="text-xs font-black text-yellow-400 mb-2">
+              <span className="text-sm font-black text-[#FFC928] mb-2">
                 {third.score} pts
               </span>
-              <div className="w-full h-32 rounded-t-3xl bg-gradient-to-t from-amber-900 to-amber-700 shadow-2xl flex flex-col items-center justify-center p-4 border-t-4 border-amber-500">
-                <span className="text-3xl font-black text-white">3</span>
+              <div className="w-full h-36 rounded-t-3xl bg-gradient-to-t from-amber-900 to-amber-700 shadow-2xl flex flex-col items-center justify-center p-4 border-t-4 border-amber-500">
+                <span className="text-4xl font-black text-white">3</span>
                 <span className="text-xs font-bold uppercase mt-1 tracking-wider text-amber-200">
                   {t('thirdPlace')}
                 </span>
@@ -747,13 +906,13 @@ export const LiveHostGamePage: React.FC = () => {
         <div className="flex items-center justify-center gap-4">
           <button
             onClick={() => navigate('/host')}
-            className="py-3.5 px-8 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-sm transition-all"
+            className="py-4 px-8 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-sm transition-all border border-white/10"
           >
             {t('returnToDashboard')}
           </button>
           <button
             onClick={handleExportCsv}
-            className="py-3.5 px-8 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-sm shadow-xl transition-all active:scale-95 flex items-center gap-2"
+            className="py-4 px-8 rounded-2xl bg-[#FFC928] hover:bg-[#FFD43B] text-[#071A3D] font-black text-sm shadow-xl transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
           >
             <Download className="w-4 h-4" />
             <span>{t('exportResultsCsv')}</span>
@@ -764,7 +923,7 @@ export const LiveHostGamePage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-[100dvh] flex items-center justify-center bg-slate-950 text-white">
+    <div className="min-h-[100dvh] flex items-center justify-center bg-[#050B18] text-white">
       Loading game session...
     </div>
   );

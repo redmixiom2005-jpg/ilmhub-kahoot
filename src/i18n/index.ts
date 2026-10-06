@@ -10,7 +10,7 @@ interface I18nState {
 const getInitialLocale = (): SupportedLocale => {
   if (typeof window === 'undefined') return 'uz';
   const saved = localStorage.getItem('ilmhub_locale') as SupportedLocale;
-  if (saved && (saved === 'en' || saved === 'ru' || saved === 'uz')) {
+  if (saved && (saved === 'en' || saved === 'ru' || saved === 'uz' || saved === 'uz-cyr')) {
     return saved;
   }
   const browserLang = navigator.language?.toLowerCase() || '';
@@ -36,19 +36,24 @@ export const useI18n = create<I18nState>((set, get) => ({
   },
 }));
 
-// Dev-time check ensuring all three languages have 100% key parity
+// Dev-time check ensuring all four languages have 100% key parity
 if (process.env.NODE_ENV !== 'production') {
   const enKeys = Object.keys(translations.en) as TranslationKey[];
   const ruKeys = Object.keys(translations.ru) as TranslationKey[];
   const uzKeys = Object.keys(translations.uz) as TranslationKey[];
+  const uzCyrKeys = Object.keys(translations['uz-cyr']) as TranslationKey[];
 
   const missingRu = enKeys.filter((k) => !ruKeys.includes(k));
   const missingUz = enKeys.filter((k) => !uzKeys.includes(k));
+  const missingUzCyr = enKeys.filter((k) => !uzCyrKeys.includes(k));
 
   if (missingRu.length > 0) {
     console.warn('[i18n] Missing keys in RU:', missingRu);
   }
   if (missingUz.length > 0) {
     console.warn('[i18n] Missing keys in UZ:', missingUz);
+  }
+  if (missingUzCyr.length > 0) {
+    console.warn('[i18n] Missing keys in UZ-CYR:', missingUzCyr);
   }
 }

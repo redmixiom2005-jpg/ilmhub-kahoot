@@ -13,6 +13,15 @@ import { LiveHostGamePage } from './features/host/LiveHostGamePage';
 import { GameResultsPage } from './features/host/GameResultsPage';
 import { NotFoundPage } from './features/common/NotFoundPage';
 import { useGameStore } from './store/gameStore';
+import { Sparkles, CheckCircle2 } from 'lucide-react';
+
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
+}
 
 function AppLayout() {
   const location = useLocation();
@@ -33,7 +42,8 @@ function AppLayout() {
   }, [theme]);
 
   return (
-    <div className="min-h-[100dvh] flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
+    <div className="min-h-[100dvh] flex flex-col bg-[#F5F8FF] dark:bg-[#050B18] text-[#101828] dark:text-white transition-colors duration-200">
+      <ScrollToTop />
       <MissingConfigBanner />
       {!isImmersiveScreen && <Header />}
 
@@ -56,8 +66,9 @@ function AppLayout() {
 
       {/* Global Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 px-5 py-3 rounded-2xl bg-slate-900 dark:bg-white text-white dark:text-slate-950 font-bold text-sm shadow-2xl border border-white/20 animate-in slide-in-from-bottom-5 duration-200">
-          {toastMessage}
+        <div className="fixed bottom-6 right-6 z-50 px-5 py-3.5 rounded-2xl bg-[#071A3D] dark:bg-[#0B1730] text-white font-extrabold text-xs shadow-2xl border border-white/20 flex items-center gap-2.5 animate-in slide-in-from-bottom-5 duration-200">
+          <CheckCircle2 className="w-4 h-4 text-[#FFC928] shrink-0" />
+          <span>{toastMessage}</span>
         </div>
       )}
     </div>

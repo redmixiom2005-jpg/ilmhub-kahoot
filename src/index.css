@@ -1,20 +1,53 @@
 @import "tailwindcss";
 
-:root {
-  --navy-900: #0B1B4D;
-  --navy-800: #12266B;
-  --navy-700: #1E3A8A;
-  --accent-yellow: #FFC107;
-  --accent-yellow-light: #FFD43B;
+@layer base {
+  :root {
+    --color-primary: #0757D9;
+    --color-primary-dark: #071A3D;
+    --color-primary-bright: #1769FF;
+    --color-accent: #FFC928;
+    --color-background: #F5F8FF;
+    --color-surface: #FFFFFF;
+    --color-surface-secondary: #EBF1FD;
+    --color-text: #101828;
+    --color-text-muted: #64748B;
+    --color-border: #E2E8F0;
+    --radius-sm: 8px;
+    --radius-md: 14px;
+    --radius-lg: 20px;
+    --radius-xl: 24px;
+    --shadow-sm: 0 1px 2px 0 rgba(7, 26, 61, 0.05);
+    --shadow-md: 0 4px 12px -2px rgba(7, 26, 61, 0.08), 0 2px 6px -1px rgba(7, 26, 61, 0.04);
+    --shadow-lg: 0 12px 28px -4px rgba(7, 26, 61, 0.12), 0 4px 12px -2px rgba(7, 26, 61, 0.06);
+  }
+
+  .dark {
+    --color-primary: #1769FF;
+    --color-primary-dark: #071A3D;
+    --color-primary-bright: #3B82F6;
+    --color-accent: #FFC928;
+    --color-background: #050B18;
+    --color-surface: #0B1730;
+    --color-surface-secondary: #102044;
+    --color-text: #FFFFFF;
+    --color-text-muted: #94A3B8;
+    --color-border: rgba(255, 255, 255, 0.08);
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 14px -2px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 16px 36px -4px rgba(0, 0, 0, 0.65);
+  }
 }
 
 html, body {
   margin: 0;
   padding: 0;
   min-height: 100dvh;
-  font-family: 'Poppins', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  font-family: 'Poppins', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   overflow-x: hidden;
   -webkit-tap-highlight-color: transparent;
+  background-color: var(--color-background);
+  color: var(--color-text);
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 /* Prevent accidental zoom on mobile Safari */
@@ -28,4 +61,33 @@ input, select, textarea {
   padding-bottom: max(12px, env(safe-area-inset-bottom));
   padding-left: max(12px, env(safe-area-inset-left));
   padding-right: max(12px, env(safe-area-inset-right));
+}
+
+/* Custom subtle glassmorphism */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.dark .glass-panel {
+  background: rgba(11, 23, 48, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.3);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.5);
 }
