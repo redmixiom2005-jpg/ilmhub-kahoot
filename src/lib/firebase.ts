@@ -29,6 +29,7 @@ import {
   AnswerSubmission,
   QuestionResult,
   Quiz,
+  PlayerStanding,
 } from '../types/quiz';
 
 // 1. ALL CONFIG READ FROM import.meta.env
@@ -85,6 +86,23 @@ if (isFirebaseConfigured) {
     '[Firebase] Missing configuration variables:',
     missingEnvVars.join(', ')
   );
+}
+
+// Track server time offset via .info/serverTimeOffset
+let serverTimeOffset = 0;
+if (db) {
+  try {
+    const offsetRef = ref(db, '.info/serverTimeOffset');
+    onValue(offsetRef, (snap) => {
+      serverTimeOffset = (snap.val() as number) || 0;
+    });
+  } catch (err) {
+    console.warn('[Firebase] Server time offset error:', err);
+  }
+}
+
+export function getEstimatedServerTime(): number {
+  return Date.now() + serverTimeOffset;
 }
 
 export { auth, db };
@@ -901,6 +919,100 @@ export function subscribeQuestionResult(
   const handler = () => {
     const updated = getLocalNode<Record<string, QuestionResult>>(`games/${pin}/results`) || {};
     callback(updated[questionIndex] || null);
+  };
+  window.addEventListener('ilmhub_local_db_change', handler);
+  return () => window.removeEventListener('ilmhub_local_db_change', handler);
+}
+
+// ATOMIC QUESTION ROUND STARTER (fixes alternating premature end bug)
+export async function startQuestionRound(
+  pin: string,
+  currentIndex: number,
+  timeLimitSeconds: number,
+  roundId: string
+): Promise<{ startedAt: number; endsAt: number; roundId: string }> {
+  const startedAt = getEstimatedServerTime();
+  const endsAt = startedAt + timeLimitSeconds * 1000;
+  const updates: Partial<GameMeta> = {
+    status: 'question',
+    currentIndex,
+    startedAt,
+    endsAt,
+    roundId,
+  };
+
+  if (db) {
+    try {
+      await withTimeout(
+        update(ref(db, `games/${pin}/meta`), stripUndefined(updates)),
+        10000,
+        `Start question round ${roundId}`
+      );
+      return { startedAt, endsAt, roundId };
+    } catch (err) {
+      console.error(`[Firebase RTDB] Error starting question round ${roundId}:`, err);
+      throw err;
+    }
+  }
+
+  const current = getLocalNode<GameMeta>(`games/${pin}/meta`);
+  if (current) {
+    setLocalNode(`games/${pin}/meta`, { ...current, ...updates });
+  }
+  return { startedAt, endsAt, roundId };
+}
+
+// LIVE STANDINGS
+export async function updateGameStandings(
+  pin: string,
+  standings: PlayerStanding[]
+): Promise<void> {
+  const clean = stripUndefined(standings);
+  if (db) {
+    try {
+      await withTimeout(
+        set(ref(db, `games/${pin}/standings`), clean),
+        10000,
+        'Update standings'
+      );
+      return;
+    } catch (err) {
+      console.error(`[Firebase RTDB] Error updating standings for ${pin}:`, err);
+      throw err;
+    }
+  }
+
+  setLocalNode(`games/${pin}/standings`, clean);
+}
+
+export function subscribeStandings(
+  pin: string,
+  callback: (standings: PlayerStanding[]) => void
+): Unsubscribe {
+  if (db) {
+    const sRef = ref(db, `games/${pin}/standings`);
+    return onValue(
+      sRef,
+      (snapshot) => {
+        const val = snapshot.val();
+        if (!val) {
+          callback([]);
+          return;
+        }
+        callback(Array.isArray(val) ? val : Object.values(val));
+      },
+      (err) => console.error(`[Firebase RTDB] Standings subscribe error for ${pin}:`, err)
+    );
+  }
+
+  const local = getLocalNode<PlayerStanding[]>(`games/${pin}/standings`) || [];
+  callback(local);
+  const handler = (e: Event) => {
+    const custom = e as CustomEvent<{ path: string; val: unknown }>;
+    if (custom.detail?.path === `games/${pin}/standings`) {
+      const v = custom.detail.val;
+      callback(Array.isArray(v) ? v : (v ? Object.values(v) as PlayerStanding[] : []));
+    }
   };
   window.addEventListener('ilmhub_local_db_change', handler);
   return () => window.removeEventListener('ilmhub_local_db_change', handler);

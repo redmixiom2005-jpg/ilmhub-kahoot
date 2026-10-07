@@ -11,6 +11,7 @@ import {
   publishQuestionResult,
   kickPlayerFromGame,
   getGameSecret,
+  startQuestionRound,
 } from '../../lib/firebase';
 import {
   GameMeta,
@@ -70,6 +71,9 @@ export const LiveHostGamePage: React.FC = () => {
   const [copiedLink, setCopiedLink] = useState(false);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const isEndingRef = useRef(false);
+  const isTransitioningRef = useRef(false);
+  const currentRoundIdRef = useRef<string | null>(null);
   const joinUrl = `${window.location.origin}/join/${pin}`;
 
   // Generate QR Code on mount with brand colors
@@ -100,35 +104,49 @@ export const LiveHostGamePage: React.FC = () => {
     };
   }, [pin]);
 
-  // Subscribe to answers during question round
+  // Subscribe to answers during question round with explicit reset on round change
   useEffect(() => {
     if (pin && gameMeta && gameMeta.status === 'question') {
-      const unsubAnswers = subscribeAnswersForQuestion(pin, gameMeta.currentIndex, (a) => {
-        setAnswers(a || {});
+      // Clear answers from previous round immediately
+      setAnswers({});
+      const expectedIndex = gameMeta.currentIndex;
+      const expectedRound = gameMeta.roundId;
+
+      const unsubAnswers = subscribeAnswersForQuestion(pin, expectedIndex, (a) => {
+        // Only accept if still on the same round
+        if (gameMeta.currentIndex === expectedIndex) {
+          setAnswers(a || {});
+        }
       });
       return () => unsubAnswers();
+    } else {
+      setAnswers({});
     }
-  }, [pin, gameMeta?.currentIndex, gameMeta?.status]);
+  }, [pin, gameMeta?.currentIndex, gameMeta?.status, gameMeta?.roundId]);
 
   const currentQuestion =
     questions && gameMeta && questions[gameMeta.currentIndex]
       ? questions[gameMeta.currentIndex]
       : null;
 
-  // Synced 3-2-1 Countdown Logic
+  // Synced 3-2-1 Countdown Logic: Starts question round atomically with roundId & server-offset time
   useEffect(() => {
     if (gameMeta?.status === 'countdown') {
       setCountdownNum(3);
       sound.playTick();
 
-      const cdInterval = setInterval(() => {
+      const cdInterval = setInterval(async () => {
         setCountdownNum((prev) => {
           if (prev <= 1) {
             clearInterval(cdInterval);
-            if (pin && currentQuestion) {
-              const now = Date.now();
-              const endsAt = now + currentQuestion.timeLimit * 1000;
-              updateGameStatus(pin, 'question', { startedAt: now, endsAt });
+            if (pin && currentQuestion && gameMeta) {
+              const targetIndex = gameMeta.currentIndex || 0;
+              const roundId = `round-${targetIndex}-${Date.now()}`;
+              currentRoundIdRef.current = roundId;
+              setAnswers({});
+              startQuestionRound(pin, targetIndex, currentQuestion.timeLimit, roundId).catch((err) => {
+                console.error('[Host] Error starting question round:', err);
+              });
             }
             return 0;
           }
@@ -139,11 +157,12 @@ export const LiveHostGamePage: React.FC = () => {
 
       return () => clearInterval(cdInterval);
     }
-  }, [gameMeta?.status, pin, currentQuestion]);
+  }, [gameMeta?.status, gameMeta?.currentIndex, pin, currentQuestion]);
 
   // Question Timer Countdown
   useEffect(() => {
     if (gameMeta?.status === 'question' && currentQuestion) {
+      isEndingRef.current = false;
       setTimeLeft(currentQuestion.timeLimit);
 
       if (timerRef.current) clearInterval(timerRef.current);
@@ -166,116 +185,153 @@ export const LiveHostGamePage: React.FC = () => {
         if (timerRef.current) clearInterval(timerRef.current);
       };
     }
-  }, [gameMeta?.status, gameMeta?.currentIndex, currentQuestion]);
+  }, [gameMeta?.status, gameMeta?.roundId, gameMeta?.currentIndex, currentQuestion]);
 
-  // Auto-end question if ALL players answered
+  // Auto-end question if ALL CONNECTED players answered (with 1500ms initial grace period)
   useEffect(() => {
-    if (gameMeta?.status === 'question') {
-      const totalPlayerCount = Object.keys(players).length;
-      const answeredCount = Object.keys(answers).length;
+    if (gameMeta?.status === 'question' && gameMeta?.roundId) {
+      const startedAt = gameMeta.startedAt || 0;
+      const now = Date.now();
+      const roundAge = now - startedAt;
 
-      if (totalPlayerCount > 0 && answeredCount >= totalPlayerCount) {
-        handleEndQuestionNow();
+      const checkAllAnswered = () => {
+        if (isEndingRef.current || gameMeta.status !== 'question') return;
+
+        const connectedPlayers = Object.values(players).filter((p) => p.connected !== false);
+        const answeredCount = Object.keys(answers).length;
+
+        // Require at least 1 connected player and all connected players answered
+        if (connectedPlayers.length > 0 && answeredCount >= connectedPlayers.length) {
+          handleEndQuestionNow();
+        }
+      };
+
+      if (roundAge < 1500) {
+        const delay = Math.max(100, 1500 - roundAge);
+        const timer = setTimeout(checkAllAnswered, delay);
+        return () => clearTimeout(timer);
+      } else {
+        checkAllAnswered();
       }
     }
-  }, [answers, players, gameMeta?.status]);
+  }, [answers, players, gameMeta?.status, gameMeta?.roundId, gameMeta?.startedAt]);
 
-  // Reveal calculation: Evaluate scores, update player streak & totals
+  // Reveal calculation: Evaluate scores, update player streak & totals (Idempotent)
   const handleEndQuestionNow = async () => {
     if (!pin || !gameMeta || !currentQuestion || gameMeta.status !== 'question') return;
+    if (isEndingRef.current) return;
+    isEndingRef.current = true;
 
     if (timerRef.current) clearInterval(timerRef.current);
     sound.playRoundEnd();
 
-    // 1. Fetch secret correct answers for this question
-    const secret = await getGameSecret(pin, gameMeta.currentIndex);
-    const correctAnswers = secret?.correctAnswers || [0];
+    try {
+      // 1. Fetch secret correct answers for this question
+      const secret = await getGameSecret(pin, gameMeta.currentIndex);
+      const correctAnswers = secret?.correctAnswers || [0];
 
-    // 2. Tally distribution across options
-    const optionCount = currentQuestion.options.length;
-    const distribution = new Array(optionCount).fill(0);
+      // 2. Tally distribution across options
+      const optionCount = currentQuestion.options.length;
+      const distribution = new Array(optionCount).fill(0);
 
-    const updatedPlayers = { ...players };
+      const updatedPlayers = { ...players };
 
-    Object.entries(answers).forEach(([uid, ans]) => {
-      ans.choice.forEach((c) => {
-        if (c >= 0 && c < optionCount) {
-          distribution[c] = (distribution[c] || 0) + 1;
+      Object.entries(answers).forEach(([uid, ans]) => {
+        ans.choice.forEach((c) => {
+          if (c >= 0 && c < optionCount) {
+            distribution[c] = (distribution[c] || 0) + 1;
+          }
+        });
+
+        // Calculate score for this player
+        const isCorrect = correctAnswers.some((ca) => ans.choice.includes(ca));
+        const playerRecord = updatedPlayers[uid];
+
+        if (playerRecord) {
+          const scoreResult = calculateQuestionScore({
+            isCorrect,
+            responseTimeMs: ans.timeMs,
+            timeLimitSeconds: currentQuestion.timeLimit,
+            pointsMode: currentQuestion.pointsMode,
+            currentStreak: playerRecord.streak || 0,
+          });
+
+          updatedPlayers[uid] = {
+            ...playerRecord,
+            score: (playerRecord.score || 0) + scoreResult.pointsEarned,
+            streak: scoreResult.newStreak,
+            lastResponseTimeMs: ans.timeMs,
+          };
         }
       });
 
-      // Calculate score for this player
-      const isCorrect = correctAnswers.some((ca) => ans.choice.includes(ca));
-      const playerRecord = updatedPlayers[uid];
+      const result: QuestionResult = {
+        questionIndex: gameMeta.currentIndex,
+        correctAnswers,
+        distribution,
+        totalAnswered: Object.keys(answers).length,
+      };
 
-      if (playerRecord) {
-        const scoreResult = calculateQuestionScore({
-          isCorrect,
-          responseTimeMs: ans.timeMs,
-          timeLimitSeconds: currentQuestion.timeLimit,
-          pointsMode: currentQuestion.pointsMode,
-          currentStreak: playerRecord.streak || 0,
-        });
+      setCurrentResult(result);
 
-        updatedPlayers[uid] = {
-          ...playerRecord,
-          score: (playerRecord.score || 0) + scoreResult.pointsEarned,
-          streak: scoreResult.newStreak,
-          lastResponseTimeMs: ans.timeMs,
-        };
-      }
-    });
+      // Compute updated Leaderboard
+      const sortedLeaderboard: LeaderboardEntry[] = Object.values(updatedPlayers)
+        .sort((a, b) => b.score - a.score)
+        .map((p, idx) => ({
+          uid: p.uid,
+          firstName: p.firstName,
+          lastName: p.lastName,
+          score: p.score,
+          streak: p.streak,
+          rank: idx + 1,
+        }));
 
-    const result: QuestionResult = {
-      questionIndex: gameMeta.currentIndex,
-      correctAnswers,
-      distribution,
-      totalAnswered: Object.keys(answers).length,
-    };
+      setLeaderboard(sortedLeaderboard);
 
-    setCurrentResult(result);
-
-    // Compute updated Leaderboard
-    const sortedLeaderboard: LeaderboardEntry[] = Object.values(updatedPlayers)
-      .sort((a, b) => b.score - a.score)
-      .map((p, idx) => ({
-        uid: p.uid,
-        firstName: p.firstName,
-        lastName: p.lastName,
-        score: p.score,
-        streak: p.streak,
-        rank: idx + 1,
-      }));
-
-    setLeaderboard(sortedLeaderboard);
-
-    // Publish to Realtime Database
-    await publishQuestionResult(pin, gameMeta.currentIndex, result, updatedPlayers);
-    await updateGameStatus(pin, 'reveal');
+      // Publish to Realtime Database
+      await publishQuestionResult(pin, gameMeta.currentIndex, result, updatedPlayers);
+      await updateGameStatus(pin, 'reveal');
+    } catch (err) {
+      console.error('[Host] Error ending question round:', err);
+    } finally {
+      isEndingRef.current = false;
+    }
   };
 
   const handleStartCountdown = async () => {
-    if (!pin || Object.keys(players).length === 0) return;
+    if (!pin || Object.keys(players).length === 0 || isTransitioningRef.current) return;
+    isTransitioningRef.current = true;
     sound.playClick();
-    await updateGameStatus(pin, 'countdown');
+    try {
+      await updateGameStatus(pin, 'countdown');
+    } finally {
+      isTransitioningRef.current = false;
+    }
   };
 
   const handleNextQuestion = async () => {
-    if (!pin || !gameMeta || !questions) return;
+    if (!pin || !gameMeta || !questions || isTransitioningRef.current) return;
+    if (gameMeta.status !== 'reveal') return;
+    isTransitioningRef.current = true;
     sound.playClick();
 
-    const nextIndex = gameMeta.currentIndex + 1;
+    try {
+      const nextIndex = gameMeta.currentIndex + 1;
 
-    if (nextIndex >= questions.length) {
-      // Game finished! Final Podium
-      await updateGameStatus(pin, 'finished');
-      sound.playWin();
-      try {
-        confetti({ particleCount: 160, spread: 100, origin: { y: 0.5 } });
-      } catch {}
-    } else {
-      // Next Question Countdown
-      await updateGameStatus(pin, 'countdown', { currentIndex: nextIndex });
+      if (nextIndex >= questions.length) {
+        // Game finished! Final Podium
+        await updateGameStatus(pin, 'finished');
+        sound.playWin();
+        try {
+          confetti({ particleCount: 160, spread: 100, origin: { y: 0.5 } });
+        } catch {}
+      } else {
+        // Reset answers & transition to Next Question Countdown
+        setAnswers({});
+        await updateGameStatus(pin, 'countdown', { currentIndex: nextIndex });
+      }
+    } finally {
+      isTransitioningRef.current = false;
     }
   };
 

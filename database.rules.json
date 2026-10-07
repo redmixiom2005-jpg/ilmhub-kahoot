@@ -45,6 +45,10 @@
         "results": {
           ".read": true,
           ".write": "auth != null && root.child('games').child($pin).child('meta/hostUid').val() == auth.uid"
+        },
+        "standings": {
+          ".read": true,
+          ".write": "auth != null && root.child('games').child($pin).child('meta/hostUid').val() == auth.uid"
         }
       }
     }

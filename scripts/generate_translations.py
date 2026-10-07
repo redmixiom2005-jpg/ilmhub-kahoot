@@ -598,6 +598,24 @@ new_keys = {
         'uz': 'Jami savollar',
         'uz-cyr': 'Жами саволлар',
     },
+    'liveStandings': {
+        'en': 'Live Standings',
+        'ru': 'Текущий рейтинг',
+        'uz': 'Jonli reyting',
+        'uz-cyr': 'Жонли рейтинг',
+    },
+    'top5': {
+        'en': 'Top 5',
+        'ru': 'Топ 5',
+        'uz': 'Yetakchi 5 talik',
+        'uz-cyr': 'Етакчи 5 талик',
+    },
+    'timesUpCalm': {
+        'en': 'Time is up!',
+        'ru': 'Время вышло!',
+        'uz': 'Vaqt tugadi!',
+        'uz-cyr': 'Вақт тугади!',
+    },
 }
 
 for k, v in new_keys.items():

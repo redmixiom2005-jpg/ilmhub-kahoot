@@ -43,6 +43,7 @@ export interface GameMeta {
   status: GameStatus;
   currentIndex: number;
   totalQuestions: number;
+  roundId?: string;
   createdAt?: number;
   startedAt?: number;
   endsAt?: number;
@@ -51,6 +52,15 @@ export interface GameMeta {
   showQuestionOnPlayers?: boolean;
   randomizeQuestions?: boolean;
   randomizeAnswers?: boolean;
+}
+
+export interface PlayerStanding {
+  uid: string;
+  firstName: string;
+  lastName: string;
+  score: number;
+  rank: number;
+  prevRank: number;
 }
 
 export interface PublicQuestion {
