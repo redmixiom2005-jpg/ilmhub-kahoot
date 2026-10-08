@@ -871,21 +871,27 @@ export async function publishQuestionResult(
   pin: string,
   questionIndex: number,
   result: QuestionResult,
-  updatedPlayers: Record<string, Player>
+  updatedPlayers: Record<string, Player>,
+  standings?: PlayerStanding[]
 ): Promise<void> {
   const cleanResult = stripUndefined(result);
   const cleanPlayers = stripUndefined(updatedPlayers);
+  const cleanStandings = standings ? stripUndefined(standings) : undefined;
 
   if (db) {
     try {
       const updates: Record<string, unknown> = {};
       updates[`games/${pin}/results/${questionIndex}`] = cleanResult;
       updates[`games/${pin}/players`] = cleanPlayers;
+      if (cleanStandings) {
+        updates[`games/${pin}/standings`] = cleanStandings;
+      }
+      updates[`games/${pin}/meta/status`] = 'reveal';
 
       await withTimeout(
         update(ref(db), updates),
         10000,
-        'Publish question results'
+        'Publish question results and transition to reveal'
       );
       return;
     } catch (err) {
@@ -898,6 +904,13 @@ export async function publishQuestionResult(
   allResults[questionIndex] = cleanResult;
   setLocalNode(`games/${pin}/results`, allResults);
   setLocalNode(`games/${pin}/players`, cleanPlayers);
+  if (cleanStandings) {
+    setLocalNode(`games/${pin}/standings`, cleanStandings);
+  }
+  const currentMeta = getLocalNode<GameMeta>(`games/${pin}/meta`);
+  if (currentMeta) {
+    setLocalNode(`games/${pin}/meta`, { ...currentMeta, status: 'reveal' });
+  }
 }
 
 export function subscribeQuestionResult(

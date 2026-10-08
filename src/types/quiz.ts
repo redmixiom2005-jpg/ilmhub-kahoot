@@ -52,6 +52,7 @@ export interface GameMeta {
   showQuestionOnPlayers?: boolean;
   randomizeQuestions?: boolean;
   randomizeAnswers?: boolean;
+  autoAdvanceSec?: number; // 0 (Off), 5, 10, 15
 }
 
 export interface PlayerStanding {
@@ -101,11 +102,22 @@ export interface AnswerSubmission {
   pointsEarned?: number;
 }
 
+export interface PlayerRoundResult {
+  correct: boolean;
+  delta: number;
+  score: number;
+  rank: number;
+  prevRank: number;
+  streak: number;
+}
+
 export interface QuestionResult {
   questionIndex: number;
+  roundId?: string;
   correctAnswers: number[];
   distribution: number[]; // Count of choices for each option index
   totalAnswered: number;
+  perPlayer?: Record<string, PlayerRoundResult>;
 }
 
 export interface LeaderboardEntry {

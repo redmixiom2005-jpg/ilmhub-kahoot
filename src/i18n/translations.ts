@@ -255,6 +255,12 @@ export const translations = {
     liveStandings: 'Live Standings',
     top5: 'Top 5',
     timesUpCalm: 'Time is up!',
+    autoAdvanceLabel: 'Auto-advance after reveal',
+    autoAdvanceOff: 'Off',
+    autoAdvanceSec: 's',
+    showPodium: 'Show Podium',
+    calculatingResult: 'Calculating result...',
+    answerLockedDesc: 'Answer locked',
   },
 
   ru: {
@@ -511,6 +517,12 @@ export const translations = {
     liveStandings: 'Текущий рейтинг',
     top5: 'Топ 5',
     timesUpCalm: 'Время вышло!',
+    autoAdvanceLabel: 'Автопереход после показа',
+    autoAdvanceOff: 'Выкл',
+    autoAdvanceSec: 'с',
+    showPodium: 'Показать пьедестал',
+    calculatingResult: 'Подсчет результатов...',
+    answerLockedDesc: 'Ответ зафиксирован',
   },
 
   uz: {
@@ -767,6 +779,12 @@ export const translations = {
     liveStandings: 'Jonli reyting',
     top5: 'Yetakchi 5 talik',
     timesUpCalm: 'Vaqt tugadi!',
+    autoAdvanceLabel: 'Javobdan so‘ng avto-o‘tish',
+    autoAdvanceOff: 'O‘chiq',
+    autoAdvanceSec: 's',
+    showPodium: 'Shohsupani ko‘rsatish',
+    calculatingResult: 'Natijalar hisoblanmoqda...',
+    answerLockedDesc: 'Javob qabul qilindi',
   },
 
   'uz-cyr': {
@@ -1023,6 +1041,12 @@ export const translations = {
     liveStandings: 'Жонли рейтинг',
     top5: 'Етакчи 5 талик',
     timesUpCalm: 'Вақт тугади!',
+    autoAdvanceLabel: 'Жавобдан сўнг авто-ўтиш',
+    autoAdvanceOff: 'Ўчиқ',
+    autoAdvanceSec: 'с',
+    showPodium: 'Шоҳсупани кўрсатиш',
+    calculatingResult: 'Натижалар ҳисобланмоқда...',
+    answerLockedDesc: 'Жавоб қабул қилинди',
   },
 } as const;
 
