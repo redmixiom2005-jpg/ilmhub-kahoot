@@ -12,6 +12,8 @@ import {
   kickPlayerFromGame,
   getGameSecret,
   startQuestionRound,
+  updateGameStandings,
+  subscribeStandings,
 } from '../../lib/firebase';
 import {
   GameMeta,
@@ -20,6 +22,7 @@ import {
   AnswerSubmission,
   QuestionResult,
   LeaderboardEntry,
+  PlayerStanding,
 } from '../../types/quiz';
 import { sound } from '../../lib/audio';
 import { calculateQuestionScore } from '../../lib/scoring';
@@ -62,6 +65,7 @@ export const LiveHostGamePage: React.FC = () => {
   const [answers, setAnswers] = useState<Record<string, AnswerSubmission>>({});
   const [currentResult, setCurrentResult] = useState<QuestionResult | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [standings, setStandings] = useState<PlayerStanding[]>([]);
 
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -75,6 +79,74 @@ export const LiveHostGamePage: React.FC = () => {
   const isTransitioningRef = useRef(false);
   const currentRoundIdRef = useRef<string | null>(null);
   const joinUrl = `${window.location.origin}/join/${pin}`;
+
+  // Helper: Compute and write standings (score descending, ties broken by lower response time)
+  const computeAndPublishStandings = async (
+    currentPlayers: Record<string, Player>,
+    prevStandingsList: PlayerStanding[] = []
+  ): Promise<PlayerStanding[]> => {
+    if (!pin) return [];
+    const prevMap: Record<string, number> = {};
+    prevStandingsList.forEach((s) => {
+      prevMap[s.uid] = s.rank;
+    });
+
+    const list = Object.values(currentPlayers).map((p) => ({
+      uid: p.uid,
+      firstName: p.firstName || '',
+      lastName: p.lastName || '',
+      score: p.score || 0,
+      timeMs: p.lastResponseTimeMs ?? 999999,
+    }));
+
+    list.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.timeMs - b.timeMs;
+    });
+
+    const computed: PlayerStanding[] = list.map((p, idx) => {
+      const rank = idx + 1;
+      const prevRank = prevMap[p.uid] || rank;
+      return {
+        uid: p.uid,
+        firstName: p.firstName,
+        lastName: p.lastName,
+        score: p.score,
+        rank,
+        prevRank,
+      };
+    });
+
+    setStandings(computed);
+    try {
+      await updateGameStandings(pin, computed);
+    } catch (err) {
+      console.error('[Host] Failed to update standings:', err);
+    }
+    return computed;
+  };
+
+  // Subscribe to standings
+  useEffect(() => {
+    if (!pin) return;
+    const unsub = subscribeStandings(pin, (s) => {
+      if (s && Array.isArray(s)) setStandings(s);
+    });
+    return () => unsub();
+  }, [pin]);
+
+  // Log host game state on changes
+  useEffect(() => {
+    if (gameMeta) {
+      console.debug('[Host State]', {
+        roundId: gameMeta.roundId,
+        currentIndex: gameMeta.currentIndex,
+        status: gameMeta.status,
+        endsAt: gameMeta.endsAt,
+        now: Date.now(),
+      });
+    }
+  }, [gameMeta]);
 
   // Generate QR Code on mount with brand colors
   useEffect(() => {
@@ -144,7 +216,16 @@ export const LiveHostGamePage: React.FC = () => {
               const roundId = `round-${targetIndex}-${Date.now()}`;
               currentRoundIdRef.current = roundId;
               setAnswers({});
-              startQuestionRound(pin, targetIndex, currentQuestion.timeLimit, roundId).catch((err) => {
+              computeAndPublishStandings(players, standings).catch(() => {});
+              startQuestionRound(pin, targetIndex, currentQuestion.timeLimit, roundId).then((res) => {
+                console.debug('[Host Game Started]', {
+                  roundId,
+                  currentIndex: targetIndex,
+                  status: 'question',
+                  endsAt: res.endsAt,
+                  now: Date.now(),
+                });
+              }).catch((err) => {
                 console.error('[Host] Error starting question round:', err);
               });
             }
@@ -171,7 +252,7 @@ export const LiveHostGamePage: React.FC = () => {
         setTimeLeft((prev) => {
           if (prev <= 1) {
             if (timerRef.current) clearInterval(timerRef.current);
-            handleEndQuestionNow();
+            handleEndQuestionNow(false);
             return 0;
           }
           if (prev <= 6) {
@@ -202,7 +283,7 @@ export const LiveHostGamePage: React.FC = () => {
 
         // Require at least 1 connected player and all connected players answered
         if (connectedPlayers.length > 0 && answeredCount >= connectedPlayers.length) {
-          handleEndQuestionNow();
+          handleEndQuestionNow(false);
         }
       };
 
@@ -217,13 +298,28 @@ export const LiveHostGamePage: React.FC = () => {
   }, [answers, players, gameMeta?.status, gameMeta?.roundId, gameMeta?.startedAt]);
 
   // Reveal calculation: Evaluate scores, update player streak & totals (Idempotent)
-  const handleEndQuestionNow = async () => {
+  const handleEndQuestionNow = async (forceSkip = false) => {
     if (!pin || !gameMeta || !currentQuestion || gameMeta.status !== 'question') return;
     if (isEndingRef.current) return;
-    isEndingRef.current = true;
 
+    // A question can never end before 1 second has passed unless host presses Skip
+    const roundAge = Date.now() - (gameMeta.startedAt || Date.now());
+    if (!forceSkip && roundAge < 1000) {
+      return;
+    }
+
+    isEndingRef.current = true;
     if (timerRef.current) clearInterval(timerRef.current);
     sound.playRoundEnd();
+
+    console.debug('[Host EndQuestion]', {
+      roundId: gameMeta.roundId,
+      currentIndex: gameMeta.currentIndex,
+      status: 'reveal',
+      roundAge,
+      forceSkip,
+      now: Date.now(),
+    });
 
     try {
       // 1. Fetch secret correct answers for this question
@@ -236,18 +332,25 @@ export const LiveHostGamePage: React.FC = () => {
 
       const updatedPlayers = { ...players };
 
-      Object.entries(answers).forEach(([uid, ans]) => {
-        ans.choice.forEach((c) => {
-          if (c >= 0 && c < optionCount) {
-            distribution[c] = (distribution[c] || 0) + 1;
-          }
-        });
+      // Process all players: calculate score for those who answered, reset streak for those who didn't
+      Object.entries(updatedPlayers).forEach(([uid, playerRecord]) => {
+        const ans = answers[uid];
+        if (ans) {
+          // Tally distribution
+          ans.choice.forEach((c) => {
+            if (c >= 0 && c < optionCount) {
+              distribution[c] = (distribution[c] || 0) + 1;
+            }
+          });
 
-        // Calculate score for this player
-        const isCorrect = correctAnswers.some((ca) => ans.choice.includes(ca));
-        const playerRecord = updatedPlayers[uid];
+          // Exact correctness check:
+          // Player answer must match correctAnswers and contain no wrong choices
+          const isCorrect =
+            Array.isArray(ans.choice) &&
+            ans.choice.length > 0 &&
+            ans.choice.every((c) => correctAnswers.includes(c)) &&
+            correctAnswers.every((ca) => ans.choice.includes(ca));
 
-        if (playerRecord) {
           const scoreResult = calculateQuestionScore({
             isCorrect,
             responseTimeMs: ans.timeMs,
@@ -262,6 +365,12 @@ export const LiveHostGamePage: React.FC = () => {
             streak: scoreResult.newStreak,
             lastResponseTimeMs: ans.timeMs,
           };
+        } else {
+          // Player did not answer in time: streak resets to 0
+          updatedPlayers[uid] = {
+            ...playerRecord,
+            streak: 0,
+          };
         }
       });
 
@@ -274,9 +383,14 @@ export const LiveHostGamePage: React.FC = () => {
 
       setCurrentResult(result);
 
-      // Compute updated Leaderboard
+      // Compute updated Leaderboard sorted by score descending, ties broken by faster response time
       const sortedLeaderboard: LeaderboardEntry[] = Object.values(updatedPlayers)
-        .sort((a, b) => b.score - a.score)
+        .sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score;
+          const aTime = a.lastResponseTimeMs ?? 999999;
+          const bTime = b.lastResponseTimeMs ?? 999999;
+          return aTime - bTime;
+        })
         .map((p, idx) => ({
           uid: p.uid,
           firstName: p.firstName,
@@ -286,10 +400,12 @@ export const LiveHostGamePage: React.FC = () => {
           rank: idx + 1,
         }));
 
+      setPlayers(updatedPlayers);
       setLeaderboard(sortedLeaderboard);
 
-      // Publish to Realtime Database
+      // Publish to Realtime Database & update live standings
       await publishQuestionResult(pin, gameMeta.currentIndex, result, updatedPlayers);
+      await computeAndPublishStandings(updatedPlayers, standings);
       await updateGameStatus(pin, 'reveal');
     } catch (err) {
       console.error('[Host] Error ending question round:', err);
@@ -395,7 +511,7 @@ export const LiveHostGamePage: React.FC = () => {
         if (gameMeta?.status === 'lobby') handleStartCountdown();
         else if (gameMeta?.status === 'reveal') handleNextQuestion();
       } else if (e.code === 'KeyS') {
-        if (gameMeta?.status === 'question') handleEndQuestionNow();
+        if (gameMeta?.status === 'question') handleEndQuestionNow(true);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -680,78 +796,196 @@ export const LiveHostGamePage: React.FC = () => {
   // ==========================================
   if (gameMeta.status === 'question' && currentQuestion) {
     const answeredCount = Object.keys(answers).length;
-    const totalCount = playerList.length;
+    const connectedPlayers = Object.values(players).filter((p) => p.connected !== false);
+    const totalCount = Math.max(playerList.length, connectedPlayers.length);
     const isTrueFalse = currentQuestion.type === 'truefalse';
+    const topStandings = standings.length > 0 ? standings.slice(0, 5) : Object.values(players).slice(0, 5).map((p, idx) => ({
+      uid: p.uid,
+      firstName: p.firstName,
+      lastName: p.lastName,
+      score: p.score || 0,
+      rank: idx + 1,
+      prevRank: idx + 1,
+    }));
 
     return (
-      <div className="min-h-[100dvh] flex flex-col justify-between p-6 sm:p-8 bg-[#050B18] text-white select-none">
-        {/* Top Header: Question Counter & Timer & Controls */}
-        <div className="flex items-center justify-between gap-4 mb-4">
-          <div className="flex items-center gap-3">
-            <span className="px-5 py-2 rounded-2xl bg-[#0B1730] border border-white/10 font-black text-base text-[#FFC928]">
+      <div className="h-[100dvh] max-h-[100dvh] overflow-hidden flex flex-col justify-between p-2.5 sm:p-4 lg:p-6 bg-[#050B18] text-white select-none safe-area-inset">
+        {/* Top Header: Question Counter & Timer Ring & Controls (Max 48px on phones) */}
+        <div className="flex items-center justify-between gap-2 sm:gap-4 shrink-0 h-10 sm:h-12">
+          <div className="flex items-center gap-2">
+            <span className="px-3 sm:px-4 py-1.5 rounded-xl sm:rounded-2xl bg-[#0B1730] border border-white/10 font-black text-xs sm:text-sm text-[#FFC928]">
               {t('questionLabel')} {currentQuestion.questionNumber} / {currentQuestion.totalQuestions}
             </span>
-          </div>
-
-          {/* Premium Circular/Pill Countdown Timer */}
-          <div className="flex items-center gap-3 bg-[#0B1730] px-7 py-2.5 rounded-full border border-white/15 shadow-xl">
-            <span className={`text-4xl sm:text-5xl font-black tabular-nums ${timeLeft <= 5 ? 'text-amber-400 animate-pulse' : 'text-white'}`}>
-              {timeLeft < 10 ? `0${timeLeft}` : timeLeft}
-            </span>
-            <span className="text-xs uppercase tracking-widest text-slate-400 font-bold">
-              {t('secShort')}
+            <span className="hidden sm:inline-block px-3 py-1.5 rounded-xl bg-white/5 text-slate-300 font-bold text-xs">
+              PIN: {pin}
             </span>
           </div>
 
-          <div className="flex items-center gap-3">
-            <span className="px-4 py-2 rounded-2xl bg-[#0B1730] border border-white/10 font-bold text-sm text-slate-300">
-              {answeredCount} / {totalCount} {t('answeredCounter')}
-            </span>
-            <button
-              onClick={handleEndQuestionNow}
-              className="px-4 py-2.5 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-md transition-all flex items-center gap-1.5"
+          {/* Center Fluid Timer Ring (12–16vmin) */}
+          <div className="flex items-center justify-center">
+            <div
+              className={`w-[12vmin] h-[12vmin] min-w-[44px] min-h-[44px] max-w-[64px] max-h-[64px] rounded-full flex flex-col items-center justify-center shadow-lg border-3 transition-colors ${
+                timeLeft <= 5
+                  ? 'border-rose-500 bg-rose-950/60 text-rose-300 animate-pulse'
+                  : 'border-[#FFC928] bg-[#0B1730] text-white'
+              }`}
             >
-              <StopCircle className="w-4 h-4" />
-              <span>{t('endQuestionNow')}</span>
+              <span className="text-base sm:text-2xl font-black tabular-nums leading-none">
+                {timeLeft}
+              </span>
+              <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold hidden sm:block">
+                {t('secShort')}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="px-3 py-1.5 rounded-xl bg-[#0B1730] border border-white/10 font-bold text-xs sm:text-sm text-slate-300 flex items-center gap-1.5">
+              <Users className="w-3.5 h-3.5 text-[#FFC928]" />
+              <span>{answeredCount} / {totalCount}</span>
+              <span className="hidden md:inline text-[11px] text-slate-400">{t('answeredCounter')}</span>
+            </div>
+
+            <button
+              onClick={() => handleEndQuestionNow(true)}
+              title={t('skipQuestion')}
+              className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 active:scale-95 text-white font-black text-xs shadow-md transition-all flex items-center gap-1 cursor-pointer"
+            >
+              <StopCircle className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{t('skipQuestion')}</span>
+            </button>
+
+            <button
+              onClick={handleToggleFullscreen}
+              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors hidden sm:flex items-center justify-center"
+              title="Fullscreen"
+            >
+              {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
             </button>
           </div>
         </div>
 
-        {/* Center: Big Question Card for Projector */}
-        <div className="flex-1 flex flex-col items-center justify-center my-6 max-w-5xl mx-auto w-full text-center">
-          <h2
-            style={{ fontSize: 'clamp(28px, 4.5vw, 56px)' }}
-            className="font-black leading-tight tracking-tight px-4 mb-6 text-white"
-          >
-            {currentQuestion.text}
-          </h2>
-
-          {currentQuestion.imageUrl && (
-            <img
-              src={currentQuestion.imageUrl}
-              alt="Question illustration"
-              className="max-h-64 rounded-3xl object-contain shadow-2xl border border-white/10 mb-4"
-            />
-          )}
+        {/* Mobile Live Standings Ticker (Top 3) */}
+        <div className="flex lg:hidden items-center justify-center gap-2 overflow-x-auto py-1 shrink-0 text-xs">
+          {topStandings.slice(0, 3).map((p) => {
+            const hasAns = Boolean(answers[p.uid]);
+            return (
+              <div
+                key={p.uid}
+                className={`flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold shrink-0 ${
+                  hasAns ? 'bg-emerald-950/70 border border-emerald-500/40 text-emerald-300' : 'bg-white/5 border border-white/10 text-slate-300'
+                }`}
+              >
+                <span>{p.rank === 1 ? '🥇' : p.rank === 2 ? '🥈' : '🥉'}</span>
+                <span className="truncate max-w-[80px]">{p.firstName}</span>
+                <span className="text-[#FFC928]">{p.score}</span>
+                {hasAns && <span className="text-emerald-400 font-black">✓</span>}
+              </div>
+            );
+          })}
         </div>
 
-        {/* Bottom Options Grid with IlmHub Distinct Styles */}
-        <div className={`grid gap-4 sm:gap-6 w-full max-w-6xl mx-auto ${isTrueFalse ? 'grid-cols-2' : 'grid-cols-2'}`}>
+        {/* Middle Content: Split between Question Display and Desktop Live Standings Panel */}
+        <div className="flex-1 min-h-0 flex flex-row items-stretch justify-between gap-3 sm:gap-4 my-1 sm:my-2 overflow-hidden">
+          {/* Question Display Card */}
+          <div className="flex-1 min-h-0 flex flex-col items-center justify-center text-center p-3 sm:p-5 bg-[#0B1730]/70 rounded-2xl sm:rounded-3xl border border-white/10 overflow-hidden shadow-xl">
+            {currentQuestion.imageUrl && (
+              <img
+                src={currentQuestion.imageUrl}
+                alt="Question illustration"
+                className="max-h-[20vh] sm:max-h-[26vh] rounded-2xl object-contain shadow-xl border border-white/10 mb-2 shrink-0"
+              />
+            )}
+            <h2 className="text-[clamp(1.15rem,3.2vw,2.2rem)] font-black leading-tight tracking-tight px-2 text-white line-clamp-3">
+              {currentQuestion.text}
+            </h2>
+          </div>
+
+          {/* Desktop Live Standings Panel (Problem 3) */}
+          <div className="hidden lg:flex w-64 xl:w-72 flex-col bg-[#0B1730]/90 border border-white/10 rounded-3xl p-3.5 shrink-0 shadow-xl overflow-hidden self-stretch">
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/10 text-xs font-black text-[#FFC928]">
+              <span className="flex items-center gap-1.5">
+                <Trophy className="w-3.5 h-3.5 text-[#FFC928]" />
+                <span>{t('liveStandings')} ({t('top5')})</span>
+              </span>
+              <span className="text-[10px] text-slate-400 font-bold">
+                {answeredCount}/{totalCount}
+              </span>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-1.5 pr-0.5">
+              {topStandings.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-xs text-slate-500 font-bold">
+                  {t('noPlayersYet')}
+                </div>
+              ) : (
+                topStandings.map((p) => {
+                  const hasAnsweredPlayer = Boolean(answers[p.uid]);
+                  return (
+                    <div
+                      key={p.uid}
+                      className={`flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs transition-all ${
+                        hasAnsweredPlayer
+                          ? 'bg-emerald-950/40 border border-emerald-500/30'
+                          : 'bg-white/5 border border-white/5'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-black text-xs w-4 text-center shrink-0">
+                          {p.rank === 1 ? '🥇' : p.rank === 2 ? '🥈' : p.rank === 3 ? '🥉' : `#${p.rank}`}
+                        </span>
+                        <span className="font-bold text-white truncate max-w-[100px] xl:max-w-[120px]">
+                          {p.firstName} {p.lastName?.[0] ? `${p.lastName[0]}.` : ''}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="font-extrabold text-[#FFC928] text-[11px]">{p.score}</span>
+                        {hasAnsweredPlayer ? (
+                          <span
+                            className="w-4 h-4 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px] font-black animate-in zoom-in duration-200"
+                            title="Answered"
+                          >
+                            ✓
+                          </span>
+                        ) : (
+                          <span className="w-4 h-4 rounded-full bg-white/10 text-slate-500 flex items-center justify-center text-[9px]">
+                            …
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom Options Grid with IlmHub Distinct Styles (Fits remaining height) */}
+        <div
+          className={`grid gap-2 sm:gap-3 w-full shrink-0 ${
+            isTrueFalse ? 'grid-cols-2 max-h-[26vh]' : 'grid-cols-2 max-h-[30vh] sm:max-h-[32vh]'
+          }`}
+        >
           {isTrueFalse ? (
             <>
               {/* True: Royal Blue */}
-              <div className="p-6 sm:p-8 rounded-3xl bg-[#0757D9] text-white flex items-center gap-5 text-2xl sm:text-3xl font-black shadow-xl border-2 border-blue-400/30">
-                <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center shrink-0">
-                  <svg className="w-8 h-8 fill-white" viewBox="0 0 24 24"><polygon points="12,2 22,12 12,22 2,12" /></svg>
+              <div className="p-3 sm:p-5 rounded-2xl bg-[#0757D9] text-white flex items-center gap-3 sm:gap-4 text-base sm:text-xl font-black shadow-xl border-2 border-blue-400/30 min-h-[50px]">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
+                  <svg className="w-5 h-5 sm:w-6 sm:h-6 fill-white" viewBox="0 0 24 24">
+                    <polygon points="12,2 22,12 12,22 2,12" />
+                  </svg>
                 </div>
-                <span>{t('trueOption')}</span>
+                <span className="text-[clamp(1rem,2.8vw,1.4rem)] uppercase">{t('trueOption')}</span>
               </div>
               {/* False: Rose/Red */}
-              <div className="p-6 sm:p-8 rounded-3xl bg-[#E11D48] text-white flex items-center gap-5 text-2xl sm:text-3xl font-black shadow-xl border-2 border-rose-400/30">
-                <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center shrink-0">
-                  <svg className="w-8 h-8 fill-white" viewBox="0 0 24 24"><polygon points="12,3 22,21 2,21" /></svg>
+              <div className="p-3 sm:p-5 rounded-2xl bg-[#E11D48] text-white flex items-center gap-3 sm:gap-4 text-base sm:text-xl font-black shadow-xl border-2 border-rose-400/30 min-h-[50px]">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
+                  <svg className="w-5 h-5 sm:w-6 sm:h-6 fill-white" viewBox="0 0 24 24">
+                    <polygon points="12,3 22,21 2,21" />
+                  </svg>
                 </div>
-                <span>{t('falseOption')}</span>
+                <span className="text-[clamp(1rem,2.8vw,1.4rem)] uppercase">{t('falseOption')}</span>
               </div>
             </>
           ) : (
@@ -773,15 +1007,17 @@ export const LiveHostGamePage: React.FC = () => {
               return (
                 <div
                   key={idx}
-                  className={`p-5 sm:p-7 rounded-3xl ${bgColors[idx]} text-white flex items-center gap-4 text-xl sm:text-2xl font-black shadow-xl border-2`}
+                  className={`p-3 sm:p-4 rounded-2xl ${bgColors[idx]} text-white flex items-center gap-2.5 sm:gap-3 text-sm sm:text-base font-black shadow-lg border-2 min-h-[48px] overflow-hidden`}
                 >
-                  <div className="w-11 h-11 bg-black/20 rounded-2xl flex items-center justify-center shrink-0 text-base font-black">
-                    <svg className="w-6 h-6 fill-white mr-1.5" viewBox="0 0 24 24">
+                  <div className="w-7 h-7 sm:w-9 sm:h-9 bg-black/20 rounded-xl flex items-center justify-center shrink-0 text-xs sm:text-sm font-black">
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5 fill-white mr-1" viewBox="0 0 24 24">
                       {shapes[idx]}
                     </svg>
                     <span>{letters[idx]}</span>
                   </div>
-                  <span className="truncate">{opt}</span>
+                  <span className="truncate text-[clamp(0.9rem,2.2vw,1.25rem)] font-extrabold leading-snug">
+                    {opt}
+                  </span>
                 </div>
               );
             })
