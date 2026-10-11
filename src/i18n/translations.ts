@@ -261,6 +261,13 @@ export const translations = {
     showPodium: 'Show Podium',
     calculatingResult: 'Calculating result...',
     answerLockedDesc: 'Answer locked',
+    pointsThisRound: 'Points this round',
+    totalScoreLabel: 'Total score',
+    autoAdvanceNextIn: 'Next question in',
+    autoAdvancePaused: 'Paused',
+    autoAdvanceResume: 'Resume',
+    autoAdvancePause: 'Pause',
+    autoAdvance: 'Auto-advance',
   },
 
   ru: {
@@ -523,6 +530,13 @@ export const translations = {
     showPodium: 'Показать пьедестал',
     calculatingResult: 'Подсчет результатов...',
     answerLockedDesc: 'Ответ зафиксирован',
+    pointsThisRound: 'Баллы за этот раунд',
+    totalScoreLabel: 'Общий счет',
+    autoAdvanceNextIn: 'Следующий вопрос через',
+    autoAdvancePaused: 'Пауза',
+    autoAdvanceResume: 'Продолжить',
+    autoAdvancePause: 'Пауза',
+    autoAdvance: 'Автопереход',
   },
 
   uz: {
@@ -785,6 +799,13 @@ export const translations = {
     showPodium: 'Shohsupani ko‘rsatish',
     calculatingResult: 'Natijalar hisoblanmoqda...',
     answerLockedDesc: 'Javob qabul qilindi',
+    pointsThisRound: 'Ushbu savoldan ball',
+    totalScoreLabel: 'Jami ball',
+    autoAdvanceNextIn: 'Keyingi savolga o‘tmoqda',
+    autoAdvancePaused: 'To‘xtatilgan',
+    autoAdvanceResume: 'Davom ettirish',
+    autoAdvancePause: 'Pauza',
+    autoAdvance: 'Avtomatik o‘tish',
   },
 
   'uz-cyr': {
@@ -1047,6 +1068,13 @@ export const translations = {
     showPodium: 'Шоҳсупани кўрсатиш',
     calculatingResult: 'Натижалар ҳисобланмоқда...',
     answerLockedDesc: 'Жавоб қабул қилинди',
+    pointsThisRound: 'Ушбу саволдан балл',
+    totalScoreLabel: 'Жами балл',
+    autoAdvanceNextIn: 'Кейинги саволга ўтмоқда',
+    autoAdvancePaused: 'Тўхтатилган',
+    autoAdvanceResume: 'Давом эттириш',
+    autoAdvancePause: 'Пауза',
+    autoAdvance: 'Автоматик ўтиш',
   },
 } as const;
 
