@@ -308,10 +308,6 @@ export const PlayerGamePage: React.FC = () => {
           </span>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <div className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-400 font-bold bg-emerald-100 dark:bg-emerald-950/60 px-3 py-1 rounded-full border border-emerald-300 dark:border-emerald-800/60">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-              <span>{t('connected')}</span>
-            </div>
           </div>
         </div>
 
@@ -560,7 +556,7 @@ export const PlayerGamePage: React.FC = () => {
                     </div>
                   ) : (
                     optText && (
-                      <span className="text-xs sm:text-sm font-bold text-center line-clamp-2 px-1">
+                      <span className="text-xs sm:text-sm font-bold text-center break-words px-1 line-clamp-3">
                         {optText}
                       </span>
                     )

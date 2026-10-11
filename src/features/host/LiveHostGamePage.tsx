@@ -888,10 +888,12 @@ export const LiveHostGamePage: React.FC = () => {
           <button
             onClick={handleStartCountdown}
             disabled={playerList.length === 0}
-            className="py-4 px-10 rounded-2xl bg-gradient-to-r from-[#0757D9] to-[#1769FF] dark:from-[#FFC928] dark:to-[#FFD43B] text-white dark:text-[#071A3D] font-black text-xl shadow-2xl transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none flex items-center gap-3 cursor-pointer"
+            className="py-4 px-6 sm:px-10 rounded-2xl bg-gradient-to-r from-[#0757D9] to-[#1769FF] dark:from-[#FFC928] dark:to-[#FFD43B] text-white dark:text-[#071A3D] font-black text-lg sm:text-xl shadow-2xl transition-all active:scale-95 disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center gap-3 cursor-pointer whitespace-nowrap"
           >
-            <Play className="w-6 h-6 fill-current" />
-            <span>{t('startGame')} ({playerList.length})</span>
+            <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-current shrink-0" />
+            <span>
+              {playerList.length > 0 ? `${t('startGame')} (${playerList.length})` : t('startGame')}
+            </span>
           </button>
         </div>
       </div>
@@ -1134,7 +1136,7 @@ export const LiveHostGamePage: React.FC = () => {
               return (
                 <div
                   key={idx}
-                  className={`p-3 sm:p-4 rounded-2xl ${bgColors[idx]} text-white flex items-center gap-2.5 sm:gap-3 text-sm sm:text-base font-black shadow-lg border-2 min-h-[48px] overflow-hidden`}
+                  className={`p-2.5 sm:p-4 rounded-2xl ${bgColors[idx]} text-white flex items-center gap-2.5 sm:gap-3 font-black shadow-lg border-2 min-h-[52px] sm:min-h-[64px] overflow-hidden`}
                 >
                   <div className="w-7 h-7 sm:w-9 sm:h-9 bg-black/20 rounded-xl flex items-center justify-center shrink-0 text-xs sm:text-sm font-black">
                     <svg className="w-4 h-4 sm:w-5 sm:h-5 fill-white mr-1" viewBox="0 0 24 24">
@@ -1142,9 +1144,11 @@ export const LiveHostGamePage: React.FC = () => {
                     </svg>
                     <span>{letters[idx]}</span>
                   </div>
-                  <span className="truncate text-[clamp(0.9rem,2.2vw,1.25rem)] font-extrabold leading-snug">
-                    {opt}
-                  </span>
+                  <div className="flex-1 min-w-0 overflow-y-auto max-h-[16vh] sm:max-h-[22vh] pr-1">
+                    <span className="text-[clamp(0.85rem,2vw,1.25rem)] font-extrabold leading-snug break-words block text-white drop-shadow-xs">
+                      {opt}
+                    </span>
+                  </div>
                 </div>
               );
             })
@@ -1212,13 +1216,13 @@ export const LiveHostGamePage: React.FC = () => {
             {/* Next Question / Show Podium Button */}
             <button
               onClick={handleNextQuestion}
-              className="py-3 px-8 rounded-2xl bg-gradient-to-r from-[#0757D9] to-[#1769FF] dark:from-[#FFC928] dark:to-[#FFD43B] text-white dark:text-[#071A3D] font-black text-base shadow-xl transition-all active:scale-95 flex items-center gap-2 cursor-pointer hover:brightness-105"
+              className="py-2.5 sm:py-3 px-4 sm:px-8 rounded-2xl bg-gradient-to-r from-[#0757D9] to-[#1769FF] dark:from-[#FFC928] dark:to-[#FFD43B] text-white dark:text-[#071A3D] font-black text-sm sm:text-base shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer hover:brightness-105 whitespace-nowrap"
             >
               <span>{isLastQuestion ? t('showPodium') : t('nextQuestion')}</span>
               {autoAdvanceRemaining !== null && autoAdvanceRemaining > 0 && !autoAdvancePaused && (
                 <span className="opacity-80 text-xs font-bold">({autoAdvanceRemaining}s)</span>
               )}
-              <SkipForward className="w-5 h-5 fill-current" />
+              <SkipForward className="w-4 h-4 sm:w-5 sm:h-5 fill-current shrink-0" />
             </button>
           </div>
         </div>
@@ -1252,11 +1256,11 @@ export const LiveHostGamePage: React.FC = () => {
                       <CheckCircle className="w-7 h-7 text-white dark:text-[#FFC928] fill-current" />
                     )}
                   </div>
-                  <div className="flex items-center gap-1.5 mt-3 text-xs sm:text-sm font-bold truncate max-w-full text-slate-700 dark:text-slate-300">
-                    <span className="w-5 h-5 rounded-md bg-slate-200 dark:bg-white/15 flex items-center justify-center text-[11px] font-black shrink-0 text-slate-900 dark:text-white">
+                  <div className="flex items-start gap-1.5 mt-3 text-xs sm:text-sm font-bold max-w-full text-slate-700 dark:text-slate-300">
+                    <span className="w-5 h-5 rounded-md bg-slate-200 dark:bg-white/15 flex items-center justify-center text-[11px] font-black shrink-0 mt-0.5 text-slate-900 dark:text-white">
                       {letters[idx]}
                     </span>
-                    <span className="truncate">{opt}</span>
+                    <span className="break-words line-clamp-3 leading-tight">{opt}</span>
                   </div>
                 </div>
               );

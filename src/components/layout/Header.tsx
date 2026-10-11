@@ -4,19 +4,13 @@ import { Logo } from '../common/Logo';
 import { LanguageSelect } from '../common/LanguageSelect';
 import { ThemeToggle } from '../common/ThemeToggle';
 import { SoundToggle } from '../common/SoundToggle';
-import { FirebaseSetupModal } from '../common/FirebaseSetupModal';
 import { useI18n } from '../../i18n';
 import { useGameStore } from '../../store/gameStore';
-import {
-  logoutUser,
-  subscribeConnectionStatus,
-  ConnectionBadgeStatus,
-} from '../../lib/firebase';
+import { logoutUser } from '../../lib/firebase';
 import {
   LogOut,
   User,
   Sparkles,
-  Activity,
   Menu,
   X,
   Compass,
@@ -31,16 +25,7 @@ export const Header: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { hostUser, setHostUser } = useGameStore();
-  const [showFirebaseModal, setShowFirebaseModal] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionBadgeStatus>('connecting');
-
-  useEffect(() => {
-    const unsub = subscribeConnectionStatus((status) => {
-      setConnectionStatus(status);
-    });
-    return () => unsub();
-  }, []);
 
   // Close mobile drawer on route change
   useEffect(() => {
@@ -53,43 +38,6 @@ export const Header: React.FC = () => {
     setMobileMenuOpen(false);
     navigate('/');
   };
-
-  const getStatusBadge = () => {
-    switch (connectionStatus) {
-      case 'connected':
-        return {
-          label: t('connected'),
-          badgeClass: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800',
-          dotClass: 'bg-emerald-500 animate-pulse',
-        };
-      case 'connecting':
-        return {
-          label: 'Connecting',
-          badgeClass: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-800',
-          dotClass: 'bg-amber-500 animate-ping',
-        };
-      case 'offline':
-        return {
-          label: 'Offline',
-          badgeClass: 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border-rose-300 dark:border-rose-800',
-          dotClass: 'bg-rose-500',
-        };
-      case 'missing-config':
-        return {
-          label: 'Setup',
-          badgeClass: 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border-rose-300 dark:border-rose-800',
-          dotClass: 'bg-rose-500 animate-bounce',
-        };
-      default:
-        return {
-          label: 'Demo',
-          badgeClass: 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border-blue-300 dark:border-blue-800',
-          dotClass: 'bg-blue-500',
-        };
-    }
-  };
-
-  const statusConfig = getStatusBadge();
 
   const navLinks = [
     { to: '/', label: t('navHome'), icon: Compass },
@@ -130,17 +78,6 @@ export const Header: React.FC = () => {
 
           {/* Right actions */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Connection badge */}
-            <button
-              onClick={() => setShowFirebaseModal(true)}
-              title="Firebase RTDB Connection Status"
-              className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all hover:scale-105 ${statusConfig.badgeClass}`}
-            >
-              <span className={`w-2 h-2 rounded-full ${statusConfig.dotClass}`} />
-              <span>{statusConfig.label}</span>
-              <Activity className="w-3 h-3 opacity-60" />
-            </button>
-
             {/* Desktop Auth Controls */}
             {hostUser ? (
               <div className="hidden sm:flex items-center gap-2">
@@ -256,11 +193,6 @@ export const Header: React.FC = () => {
           </div>
         )}
       </header>
-
-      <FirebaseSetupModal
-        isOpen={showFirebaseModal}
-        onClose={() => setShowFirebaseModal(false)}
-      />
     </>
   );
 };

@@ -232,11 +232,11 @@ export const JoinPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={fullPin.length !== 6}
-                className="w-full py-4 px-6 rounded-2xl bg-[#0757D9] hover:bg-[#1769FF] disabled:opacity-50 text-white font-black text-lg shadow-lg shadow-[#0757D9]/25 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full py-3.5 sm:py-4 px-4 sm:px-6 rounded-2xl bg-[#0757D9] hover:bg-[#1769FF] disabled:opacity-50 text-white font-black text-base sm:text-lg shadow-lg shadow-[#0757D9]/25 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
               >
-                <Gamepad2 className="w-5 h-5 text-[#FFC928]" />
+                <Gamepad2 className="w-5 h-5 text-[#FFC928] shrink-0" />
                 <span>{t('joinGameCTA')}</span>
-                <ArrowRight className="w-5 h-5" />
+                <ArrowRight className="w-5 h-5 shrink-0" />
               </button>
 
               {/* Or divider */}
@@ -332,16 +332,16 @@ export const JoinPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full mt-4 py-4 px-6 rounded-2xl bg-gradient-to-r from-[#FFC928] to-[#FFD43B] hover:brightness-105 text-[#071A3D] font-black text-lg shadow-lg active:scale-98 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                className="w-full mt-4 py-3.5 sm:py-4 px-4 sm:px-6 rounded-2xl bg-gradient-to-r from-[#FFC928] to-[#FFD43B] hover:brightness-105 text-[#071A3D] font-black text-base sm:text-lg shadow-lg active:scale-98 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer whitespace-nowrap"
               >
                 {loading ? (
                   <>
-                    <Loader2 className="w-6 h-6 animate-spin" />
-                    <span>Connecting...</span>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>{t('loading')}</span>
                   </>
                 ) : (
                   <>
-                    <Gamepad2 className="w-6 h-6" />
+                    <Gamepad2 className="w-5 h-5 shrink-0" />
                     <span>{t('joinButton')}</span>
                   </>
                 )}
